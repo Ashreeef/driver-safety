@@ -12,12 +12,12 @@ Real-time driver monitoring using a single in-vehicle camera on Raspberry Pi 4.
 - Integration Pipeline
 
 ## Setup
-`ash
+`
 pip install -r requirements.txt
 `
 
 ## Run demo
-`ash
+`
 python scripts/run_demo.py
 `
 
