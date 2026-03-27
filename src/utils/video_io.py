@@ -1,0 +1,2 @@
+# Webcam / video file abstraction
+

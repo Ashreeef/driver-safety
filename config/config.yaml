@@ -1,0 +1,38 @@
+# ============================================================
+# Central configuration - no magic numbers in source files
+# ============================================================
+
+camera:
+  source: 0                  # 0 = webcam, or path to video file
+  width: 640
+  height: 480
+  fps: 30
+
+mediapipe:
+  model_variant: "full"      # lite / full / heavy - TBD after Pi benchmark
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+head_pose:
+  max_yaw_deg: 45
+  max_pitch_deg: 30
+
+fatigue:
+  ear_threshold: 0.21        # below this = eye closed
+  mar_threshold: 0.60        # above this = yawning
+  perclos_window_sec: 60
+  perclos_alert_ratio: 0.15  # alert if >15% of frames are closed
+
+gaze:
+  distraction_zone_threshold_sec: 2.0
+
+compliance:
+  phone_confidence_threshold: 0.6
+  seatbelt_confidence_threshold: 0.6
+  smoking_hand_mouth_px: 40  # pixel distance threshold
+  smoking_duration_sec: 1.0
+
+alerts:
+  audio: true
+  on_screen_banner: true
+  log_to_file: true

@@ -1,0 +1,17 @@
+# Core
+opencv-python==4.9.0.80
+mediapipe==0.10.11
+numpy==1.26.4
+PyYAML==6.0.1
+
+# Deep learning
+torch==2.2.2
+torchvision==0.17.2
+tensorflow==2.16.1
+
+# Detection
+ultralytics==8.1.47
+
+# Utilities
+Pillow==10.3.0
+tqdm==4.66.2
