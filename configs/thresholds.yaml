@@ -1,0 +1,28 @@
+# Module 1 & 2: Fatigue & Head Pose (Ashref)
+ear_threshold: 0.20
+ear_consec_frames: 4
+ear_closure_threshold: 0.05
+mar_threshold: 0.60
+yawn_min_seconds: 2.0
+perclos_window_seconds: 60
+perclos_alert_level: 0.15
+head_yaw_max: 45
+head_pitch_max: 30
+
+# Module 3: Gaze (Ashref)
+gaze_alert_seconds: 2.0
+
+# Module 5: Compliance (Imen & Yacine)
+phone_confidence_threshold: 0.6
+seatbelt_confidence_threshold: 0.6
+smoking_hand_mouth_px: 40
+smoking_duration_sec: 1.0
+
+# General System Settings
+camera_source: 0
+camera_width: 640
+camera_height: 480
+camera_fps: 15          # Baseline target is 15 FPS on Raspberry Pi
+alerts_audio: true
+alerts_on_screen_banner: true
+alerts_log_to_file: true
