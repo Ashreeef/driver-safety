@@ -1,4 +1,5 @@
 import time
+import collections
 import numpy as np
 from src.face_mesh.landmark_utils import LEFT_EYE_CONTOUR, RIGHT_EYE_CONTOUR, IRIS_LEFT, IRIS_RIGHT
 
@@ -43,13 +44,44 @@ class GazeEstimator:
     def __init__(self, thresholds: dict):
         self.alert_seconds = thresholds.get('gaze_alert_seconds', 2.0)
         self.not_forward_start_time = None
+        self._ratio_buf = collections.deque(maxlen=5)
+        self._stable_direction = "forward"
+        self._candidate_direction = None
+        self._candidate_count = 0
+        self._confirm_frames = 3
+        self._last_seen_time = None
+        self._hold_after_loss_sec = 0.4
+
+    def _update_stable_direction(self, direction: str) -> str:
+        if direction == self._stable_direction:
+            self._candidate_direction = None
+            self._candidate_count = 0
+            return self._stable_direction
+
+        if direction == self._candidate_direction:
+            self._candidate_count += 1
+        else:
+            self._candidate_direction = direction
+            self._candidate_count = 1
+
+        if self._candidate_count >= self._confirm_frames:
+            self._stable_direction = direction
+            self._candidate_direction = None
+            self._candidate_count = 0
+
+        return self._stable_direction
 
     def update(self, result_dict: dict) -> dict:
         """
         Calculates gaze direction and tracks off-forward duration.
         """
         if not result_dict.get('valid', False) or result_dict.get('landmarks') is None:
-            self.not_forward_start_time = None
+            # Keep last stable gaze briefly during transient invalid frames.
+            if self._last_seen_time and (time.time() - self._last_seen_time) <= self._hold_after_loss_sec:
+                result_dict['gaze_direction'] = self._stable_direction
+            else:
+                self.not_forward_start_time = None
+                result_dict['gaze_direction'] = None
             return result_dict
             
         landmarks = result_dict['landmarks']
@@ -60,11 +92,17 @@ class GazeEstimator:
         
         h_ratio = (h_left + h_right) / 2.0
         v_ratio = (v_left + v_right) / 2.0
+
+        self._ratio_buf.append((h_ratio, v_ratio))
+        h_ratio = float(np.mean([p[0] for p in self._ratio_buf]))
+        v_ratio = float(np.mean([p[1] for p in self._ratio_buf]))
         
         direction = determine_gaze_direction(h_ratio, v_ratio)
-        result_dict['gaze_direction'] = direction
+        stable_direction = self._update_stable_direction(direction)
+        result_dict['gaze_direction'] = stable_direction
+        self._last_seen_time = time.time()
         
-        if direction != "forward":
+        if stable_direction != "forward":
             if self.not_forward_start_time is None:
                 self.not_forward_start_time = time.time()
             else:

@@ -1,13 +1,25 @@
 # Module 1 & 2: Fatigue & Head Pose (Ashref)
 ear_threshold: 0.20
 ear_consec_frames: 4
-ear_closure_threshold: 0.05
+ear_closure_threshold: 0.15  # was 0.05
+ear_calibration_seconds: 10    # how long to collect baseline at session start
+ear_closure_ratio: 0.75        # alert_threshold = baseline * this
+ear_perclos_ratio: 0.27        # perclos_threshold = baseline * this
+ear_trend_drop_threshold: 0.06
+ear_smooth_frames: 10
 mar_threshold: 0.60
 yawn_min_seconds: 2.0
+yawn_window_seconds: 300    # rolling window for frequency counter (seconds)
+yawn_count_alert: 3         # how many yawns trigger the frequency alert
 perclos_window_seconds: 60
 perclos_alert_level: 0.15
-head_yaw_max: 45
-head_pitch_max: 30
+head_yaw_max: 60        # was 45
+head_pitch_max: 40      # was 30
+
+camera_yaw_offset: 0        # WILL BE tuned to mount angle
+camera_pitch_offset: 0      # WILL BE tuned to mount angle
+
+landmark_ema_alpha: 0.4     # EMA smoothing (0.2 = heavy, 0.7 = light)
 
 # Module 3: Gaze (Ashref)
 gaze_alert_seconds: 2.0
