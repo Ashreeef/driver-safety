@@ -10,7 +10,7 @@ from .roi import ROIExtractor, get_yolo_roi_boxes
 from .classifier import SeatbeltClassifier
 from .geometric import GeometricPrior
 from src.fusion.smoothers import EMASmoother, MajorityVoteSmoother, BiLSTMSmoother
-PATCH_CONF_THRESHOLD=0.65
+
 class BaseSeatbeltPipeline:
     """Interface for seatbelt detection pipelines."""
     def process_frame(self, frame: np.ndarray) -> np.ndarray:
@@ -50,7 +50,8 @@ class PipelineA(BaseSeatbeltPipeline):
         
         self.classifier = SeatbeltClassifier(classifier_path, device=device, config=clf_cfg)
         self.smoother = MajorityVoteSmoother(config=sm_cfg)
-        self.yolo_conf_thresh = roi_cfg.get('yolo_conf_thresh', 0.45)
+        self.yolo_conf_thresh = roi_cfg.get('yolo_conf_thresh', 0.5)
+        self.patch_conf_thresh = clf_cfg.get('patch_conf_threshold', 0.65)
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
         """
@@ -64,8 +65,9 @@ class PipelineA(BaseSeatbeltPipeline):
             if roi.size == 0: continue
             
             patch_cls, patch_conf = self.classifier.predict(roi)
-            if patch_cls == 1 and patch_conf < PATCH_CONF_THRESHOLD:
+            if patch_cls == 1 and patch_conf < self.patch_conf_thresh:
                 patch_cls = 0   # apply confidence gate
+            
             # Majority vote smoothing is harder per-box in raw video without tracking
             # In the notebook, it seems to smooth based on the list position which is fragile
             # For migration, we'll keep the notebook's logic but note its limitation
@@ -149,8 +151,8 @@ class PipelineB(BaseSeatbeltPipeline):
         self.geo_prior = GeometricPrior(config=geo_cfg)
         self.smoother = EMASmoother(config=sm_cfg)
         
-        self.fusion_cnn_weight = fus_cfg.get('cnn_weight', 0)
-        self.fusion_yolo_weight = fus_cfg.get('yolo_weight', 1)
+        self.fusion_cnn_weight = fus_cfg.get('cnn_weight', 0.6)
+        self.fusion_yolo_weight = fus_cfg.get('yolo_weight', 0.4)
         self.agreement_threshold = fus_cfg.get('agreement_threshold', 0.75)
         self.use_geo_prior = fus_cfg.get('use_geo_prior', True)
 
@@ -186,7 +188,12 @@ class PipelineB(BaseSeatbeltPipeline):
                 prior_score = self.geo_prior.get_score(roi, kps, bbox)
                 
         # Stage 5: EMA Fusion
-        yolo_on_conf = yolo_conf if yolo_pred == 1 else (1.0 - yolo_conf)
+        if yolo_conf > 0:
+            yolo_on_conf = yolo_conf if yolo_pred == 1 else (1.0 - yolo_conf)
+        else:
+            # If YOLO detects nothing, it doesn't support an "ON" prediction
+            yolo_on_conf = 0.0
+            
         on_prob = self.fusion_cnn_weight * cnn_conf + self.fusion_yolo_weight * yolo_on_conf
         label, final_conf = self.smoother.update(on_prob)
         

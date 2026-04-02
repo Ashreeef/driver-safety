@@ -15,6 +15,7 @@ classifier:
   input_size: [96, 96]
   normalization_mean: [0.485, 0.456, 0.406]
   normalization_std: [0.229, 0.224, 0.225]
+  patch_conf_threshold: 0.65
 
 geometric:
   n_iter: 30
@@ -36,8 +37,8 @@ smoothers:
     sequence_len: 16
 
 fusion:
-  cnn_weight: 0
-  yolo_weight: 1
+  cnn_weight: 0.2
+  yolo_weight: 0.8
   agreement_threshold: 0.75
 
 visualization:
