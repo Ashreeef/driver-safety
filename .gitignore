@@ -3,6 +3,8 @@ data/
 
 # Model weights
 models/
+weights/
+test_input/
 *.pt
 *.pth
 *.tflite
