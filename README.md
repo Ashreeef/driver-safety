@@ -12,7 +12,6 @@ Real-time driver monitoring using a single in-vehicle camera on Raspberry Pi 4.
 
 ## Seatbelt Detection Pipeline
 
-I have successfully migrated the seatbelt detection logic into a production-ready structure.
 
 ### Features
 - **Pipeline A**: YOLOv5/v8 Full-Frame Detection + MobileNetV3 Patch Classifier.
