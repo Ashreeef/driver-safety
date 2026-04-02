@@ -1,0 +1,29 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-8.1.1, pluggy-1.5.0 -- C:\Users\Admin\miniconda3\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Admin\Documents\driver-safety
+plugins: anyio-4.12.0, cov-5.0.0
+collecting ... collected 0 items / 1 error
+
+=================================== ERRORS ====================================
+___________________ ERROR collecting tests/test_seatbelt.py ___________________
+tests\test_seatbelt.py:12: in <module>
+    from src.fusion.smoothers import EMASmoother, MajorityVoteSmoother
+src\fusion\smoothers.py:8: in <module>
+    class EMASmoother:
+src\fusion\smoothers.py:12: in EMASmoother
+    def __init__(self, config: Optional[Dict] = None):
+E   NameError: name 'Dict' is not defined
+------------------------------- Captured stderr -------------------------------
+2026-04-02 23:02:39.629468: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-04-02 23:02:41.340928: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+============================== warnings summary ===============================
+..\..\miniconda3\Lib\site-packages\pytz\tzinfo.py:27
+  C:\Users\Admin\miniconda3\Lib\site-packages\pytz\tzinfo.py:27: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+    _epoch = datetime.utcfromtimestamp(0)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+ERROR tests/test_seatbelt.py - NameError: name 'Dict' is not defined
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+========================= 1 warning, 1 error in 5.67s =========================

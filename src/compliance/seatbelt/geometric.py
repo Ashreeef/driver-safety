@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 
 class GeometricPrior:
     """
@@ -9,16 +9,21 @@ class GeometricPrior:
     consistent with a real seatbelt trajectory.
     """
     
-    def __init__(self, n_iter: int = 30, dist_thresh: float = 4.0, min_inliers: int = 15):
-        self.n_iter = n_iter
-        self.dist_thresh = dist_thresh
-        self.min_inliers = min_inliers
+    def __init__(self, config: Optional[Dict] = None):
+        self.config = config or {}
+        self.n_iter = self.config.get('n_iter', 30)
+        self.dist_thresh = self.config.get('dist_thresh', 4.0)
+        self.min_inliers = self.config.get('min_inliers', 15)
+        self.slope_tolerance = self.config.get('slope_tolerance', 0.5)
+        self.expected_slope = self.config.get('expected_slope', -1.0)
+        self.canny_t1 = self.config.get('canny_t1', 50)
+        self.canny_t2 = self.config.get('canny_t2', 150)
 
-    def _extract_belt_candidates(self, roi: np.ndarray, t1: int = 50, t2: int = 150) -> np.ndarray:
+    def _extract_belt_candidates(self, roi: np.ndarray) -> np.ndarray:
         if roi is None or roi.size == 0:
             return np.empty((0, 2), np.float32)
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, t1, t2)
+        edges = cv2.Canny(gray, self.canny_t1, self.canny_t2)
         ys, xs = np.nonzero(edges)
         return np.column_stack([xs, ys]).astype(np.float32) if len(xs) else np.empty((0, 2), np.float32)
 
@@ -46,7 +51,7 @@ class GeometricPrior:
         ratio = best_n / len(pts) if len(pts) else 0.0
         return (best_line if best_n >= self.min_inliers else None), ratio
 
-    def get_score(self, roi: np.ndarray, keypoints: List, roi_bbox: Tuple, slope_tolerance: float = 0.5) -> float:
+    def get_score(self, roi: np.ndarray, keypoints: List, roi_bbox: Tuple) -> float:
         """
         Returns a [0, 1] confidence score that the ROI contains a seatbelt strap.
         """
@@ -62,7 +67,7 @@ class GeometricPrior:
             return 0.3
             
         # Expected slope based on shoulder-hip alignment if landmarks available
-        expected_slope = -1.0 
+        expected_slope = self.expected_slope
         if keypoints and len(keypoints) >= 4:
             x1r, y1r = roi_bbox[0], roi_bbox[1]
             # kps: [L-shoulder, R-shoulder, L-hip, R-hip]
@@ -73,6 +78,6 @@ class GeometricPrior:
                 expected_slope = (lh[1] - rs[1]) / (lh[0] - rs[0])
                 
         slope_err = abs(line[0] - expected_slope)
-        slope_score = max(0.0, 1.0 - slope_err / (slope_tolerance * 2))
+        slope_score = max(0.0, 1.0 - slope_err / (self.slope_tolerance * 2))
         
         return float(np.clip(0.5 * inlier_ratio + 0.5 * slope_score, 0.0, 1.0))

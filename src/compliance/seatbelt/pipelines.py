@@ -10,7 +10,7 @@ from .roi import ROIExtractor, get_yolo_roi_boxes
 from .classifier import SeatbeltClassifier
 from .geometric import GeometricPrior
 from src.fusion.smoothers import EMASmoother, MajorityVoteSmoother, BiLSTMSmoother
-
+PATCH_CONF_THRESHOLD=0.65
 class BaseSeatbeltPipeline:
     """Interface for seatbelt detection pipelines."""
     def process_frame(self, frame: np.ndarray) -> np.ndarray:
@@ -21,60 +21,51 @@ class PipelineA(BaseSeatbeltPipeline):
     Pipeline A: YOLOv5 Full-Frame ROI + CNN + Majority Vote.
     Processes each detected seatbelt strap independently.
     """
-    def __init__(self, yolo_path: str, classifier_path: str, device: str = 'cpu'):
-        # Attempt to load as a modern Ultralytics model (v8, v10, etc.)
+    def __init__(self, yolo_path: str, classifier_path: str, device: str = 'cpu', config: Optional[Dict] = None):
+        self.config = config or {}
+        self.device = device
+        
+        # Load sub-configs
+        roi_cfg = self.config.get('roi', {})
+        clf_cfg = self.config.get('classifier', {})
+        sm_cfg = self.config.get('smoothers', {}).get('majority', {})
+        self.viz_cfg = self.config.get('visualization', {})
+        
+        # Models
         try:
-            # We use a custom loading block to avoid the hub conflict for legacy v5 models
-            # Only try YOLO() if it looks like a modern export or doesn't cause path issues
             self.yolo = YOLO(yolo_path)
-            # Check if it actually loaded a valid model object vs a partial failure
             if not hasattr(self.yolo, 'predict') and not hasattr(self.yolo, 'model'):
                 raise ValueError("Modern loader failed to initialize model")
         except Exception:
-            # Fallback for older YOLOv5 custom weights that require the hub loader
-            # We explicitly add the hub cache to path to avoid ModuleNotFoundError
             import torch.hub
             hub_dir = torch.hub.get_dir()
-            repo_name = "ultralytics_yolov5_master"
-            v5_path = os.path.join(hub_dir, repo_name)
-            
-            # Ensure we have the hub repo before path patching
+            v5_path = os.path.join(hub_dir, "ultralytics_yolov5_master")
             if not os.path.exists(v5_path):
-                # This will trigger a fresh clone if missing
                 torch.hub.help("ultralytics/yolov5", "custom")
-            
-            # Patch path
             if v5_path not in sys.path:
                 sys.path.insert(0, v5_path)
-                
-            try:
-                self.yolo = torch.hub.load("ultralytics/yolov5", "custom", path=yolo_path, force_reload=False)
-                if hasattr(self.yolo, 'eval'):
-                    self.yolo.eval()
-            except Exception as e:
-                # If still fails, try force_reload as last resort
-                print(f"Warning: Hub load failed, retrying with force_reload... Error: {e}")
-                self.yolo = torch.hub.load("ultralytics/yolov5", "custom", path=yolo_path, force_reload=True)
-                if hasattr(self.yolo, 'eval'):
-                    self.yolo.eval()
+            self.yolo = torch.hub.load("ultralytics/yolov5", "custom", path=yolo_path, force_reload=False)
+            if hasattr(self.yolo, 'eval'):
+                self.yolo.eval()
         
-        self.classifier = SeatbeltClassifier(classifier_path, device=device)
-        self.smoother = MajorityVoteSmoother(window_size=5)
-        self.device = device
+        self.classifier = SeatbeltClassifier(classifier_path, device=device, config=clf_cfg)
+        self.smoother = MajorityVoteSmoother(config=sm_cfg)
+        self.yolo_conf_thresh = roi_cfg.get('yolo_conf_thresh', 0.45)
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
         """
         Processes frame and returns annotated frame + detection results.
         """
         results = []
-        boxes = get_yolo_roi_boxes(self.yolo, frame)
+        boxes = get_yolo_roi_boxes(self.yolo, frame, conf_thresh=self.yolo_conf_thresh)
         
         for (x1, y1, x2, y2, yolo_conf) in boxes:
             roi = frame[y1:y2, x1:x2]
             if roi.size == 0: continue
             
             patch_cls, patch_conf = self.classifier.predict(roi)
-            
+            if patch_cls == 1 and patch_conf < PATCH_CONF_THRESHOLD:
+                patch_cls = 0   # apply confidence gate
             # Majority vote smoothing is harder per-box in raw video without tracking
             # In the notebook, it seems to smooth based on the list position which is fragile
             # For migration, we'll keep the notebook's logic but note its limitation
@@ -96,16 +87,28 @@ class PipelineA(BaseSeatbeltPipeline):
         out = frame.copy()
         H, W = frame.shape[:2]
         
+        # Viz settings
+        colors_cfg = self.viz_cfg.get('colors', {'ON': (0, 200, 0), 'OFF': (0, 0, 220), 'WARMING': (160, 160, 160)})
+        # YAML parser may load ON/OFF as True/False (booleans)
+        colors = {}
+        for k, v in colors_cfg.items():
+            if k is True: colors['ON'] = tuple(v)
+            elif k is False: colors['OFF'] = tuple(v)
+            else: colors[str(k)] = tuple(v)
+        
+        overlay_alpha = self.viz_cfg.get('overlay_alpha', 0.6)
+        banner_h = self.viz_cfg.get('banner_height', 50)
+        
         if not detections:
             overlay = out.copy()
-            cv2.rectangle(overlay, (0, 0), (W, 50), (80, 80, 80), -1)
-            cv2.addWeighted(overlay, 0.55, out, 0.45, 0, out)
-            cv2.putText(out, "No seatbelt detected", (10, 34), 
+            cv2.rectangle(overlay, (0, 0), (W, banner_h), (80, 80, 80), -1)
+            cv2.addWeighted(overlay, overlay_alpha, out, 1.0 - overlay_alpha, 0, out)
+            cv2.putText(out, "No seatbelt detected", (10, int(banner_h * 0.68)), 
                         cv2.FONT_HERSHEY_DUPLEX, 0.9, (200, 200, 200), 2)
         else:
             for d in detections:
                 x1, y1, x2, y2 = d['bbox']
-                color = (0, 200, 0) if d['class_idx'] == 1 else (0, 0, 220)
+                color = colors['ON'] if d['class_idx'] == 1 else colors['OFF']
                 label = f"Seatbelt {d['label']} ({d['confidence']:.0%})"
                 
                 cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
@@ -128,14 +131,28 @@ class PipelineB(BaseSeatbeltPipeline):
     """
     Pipeline B: MediaPipe Pose + YOLOv8 + CNN + RANSAC + EMA Fusion.
     """
-    def __init__(self, yolo_path: str, classifier_path: str, device: str = 'cpu', use_geo_prior: bool = True):
-        self.roi_extractor = ROIExtractor(method='mediapipe')
-        self.yolo = YOLO(yolo_path)
-        self.classifier = SeatbeltClassifier(classifier_path, device=device)
-        self.geo_prior = GeometricPrior()
-        self.smoother = EMASmoother()
-        self.use_geo_prior = use_geo_prior
+    def __init__(self, yolo_path: str, classifier_path: str, device: str = 'cpu', config: Optional[Dict] = None):
+        self.config = config or {}
         self.device = device
+        
+        # Load sub-configs
+        roi_cfg = self.config.get('roi', {})
+        clf_cfg = self.config.get('classifier', {})
+        geo_cfg = self.config.get('geometric', {})
+        sm_cfg = self.config.get('smoothers', {}).get('ema', {})
+        fus_cfg = self.config.get('fusion', {})
+        self.viz_cfg = self.config.get('visualization', {})
+        
+        self.roi_extractor = ROIExtractor(method='mediapipe', config=roi_cfg)
+        self.yolo = YOLO(yolo_path)
+        self.classifier = SeatbeltClassifier(classifier_path, device=device, config=clf_cfg)
+        self.geo_prior = GeometricPrior(config=geo_cfg)
+        self.smoother = EMASmoother(config=sm_cfg)
+        
+        self.fusion_cnn_weight = fus_cfg.get('cnn_weight', 0)
+        self.fusion_yolo_weight = fus_cfg.get('yolo_weight', 1)
+        self.agreement_threshold = fus_cfg.get('agreement_threshold', 0.75)
+        self.use_geo_prior = fus_cfg.get('use_geo_prior', True)
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, Dict]:
         H, W = frame.shape[:2]
@@ -169,11 +186,8 @@ class PipelineB(BaseSeatbeltPipeline):
                 prior_score = self.geo_prior.get_score(roi, kps, bbox)
                 
         # Stage 5: EMA Fusion
-        # Note: In notebook B, on_prob = 0.6 * cnn_conf + 0.4 * yolo_conf
-        # We ensure yolo_conf is ON-class conf
         yolo_on_conf = yolo_conf if yolo_pred == 1 else (1.0 - yolo_conf)
-        # Note: classifier.predict returns (idx, on_prob) already
-        on_prob = 0.6 * cnn_conf + 0.4 * yolo_on_conf
+        on_prob = self.fusion_cnn_weight * cnn_conf + self.fusion_yolo_weight * yolo_on_conf
         label, final_conf = self.smoother.update(on_prob)
         
         res = {
@@ -196,8 +210,18 @@ class PipelineB(BaseSeatbeltPipeline):
         label, conf = res['label'], res['confidence']
         bbox, kps = res['bbox'], res['kps']
         
-        _COLORS = {'ON': (0, 200, 0), 'OFF': (0, 0, 220), 'WARMING': (160, 160, 160)}
-        color = _COLORS.get(label, (160, 160, 160))
+        # Viz settings
+        colors_cfg = self.viz_cfg.get('colors', {'ON': (0, 200, 0), 'OFF': (0, 0, 220), 'WARMING': (160, 160, 160)})
+        colors = {}
+        for k, v in colors_cfg.items():
+            if k is True: colors['ON'] = tuple(v)
+            elif k is False: colors['OFF'] = tuple(v)
+            else: colors[str(k)] = tuple(v)
+            
+        color = colors.get(label, colors.get('WARMING', (160, 160, 160)))
+        overlay_alpha = self.viz_cfg.get('overlay_alpha', 0.6)
+        banner_h = self.viz_cfg.get('banner_height', 50)
+        font_s = self.viz_cfg.get('font_scale', 0.9)
         
         if bbox:
             x1, y1, x2, y2 = bbox
@@ -208,10 +232,10 @@ class PipelineB(BaseSeatbeltPipeline):
             
         # Top banner
         ov = out.copy()
-        cv2.rectangle(ov, (0, 0), (W, 50), color, -1)
-        cv2.addWeighted(ov, 0.60, out, 0.40, 0, out)
-        cv2.putText(out, f"Seatbelt {label}  ({conf:.0%})", (10, 34), 
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2)
+        cv2.rectangle(ov, (0, 0), (W, banner_h), color, -1)
+        cv2.addWeighted(ov, overlay_alpha, out, 1.0 - overlay_alpha, 0, out)
+        cv2.putText(out, f"Seatbelt {label}  ({conf:.0%})", (10, int(banner_h * 0.68)), 
+                    cv2.FONT_HERSHEY_DUPLEX, font_s, (255, 255, 255), 2)
                     
         # Score cards (Bottom)
         models = [
@@ -226,11 +250,11 @@ class PipelineB(BaseSeatbeltPipeline):
         
         for i, (name, pred, score) in enumerate(models):
             cx, cy = px + i * (cell_w + 6), py
-            cell_color = (34, 139, 34) if pred == "ON" else ((0, 0, 178) if pred == "OFF" else (70, 70, 70))
+            cell_color = colors['ON'] if pred == "ON" else (colors['OFF'] if pred == "OFF" else colors['WARMING'])
             
             ov = out.copy()
             cv2.rectangle(ov, (cx, cy), (cx + cell_w, cy + cell_h), cell_color, -1)
-            cv2.addWeighted(ov, 0.55, out, 0.45, 0, out)
+            cv2.addWeighted(ov, overlay_alpha - 0.05, out, 1.05 - overlay_alpha, 0, out)
             cv2.rectangle(out, (cx, cy), (cx + cell_w, cy + cell_h), (210, 210, 210), 1)
             
             cv2.putText(out, name, (cx + 6, cy + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (210, 210, 210), 1)

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import os
 import urllib.request
-from typing import Tuple, List, Optional, Union
+from typing import Tuple, List, Optional, Union, Dict
 
 # MediaPipe imports
 try:
@@ -19,9 +19,10 @@ class ROIExtractor:
     Supports MediaPipe Pose landmarks and YOLO-based detection.
     """
     
-    def __init__(self, method: str = 'mediapipe', model_path: Optional[str] = None):
+    def __init__(self, method: str = 'mediapipe', model_path: Optional[str] = None, config: Optional[Dict] = None):
         self.method = method
         self.model_path = model_path
+        self.config = config or {}
         self.pose_estimator = None
         
         if method == 'mediapipe' and MEDIAPIPE_AVAILABLE:
@@ -38,12 +39,17 @@ class ROIExtractor:
                 print(f"Downloading {model_path}...")
                 urllib.request.urlretrieve(url, model_path)
         
+        # Externalized settings
+        min_presence = self.config.get('min_pose_presence_confidence', 0.5)
+        min_detection = self.config.get('min_pose_detection_confidence', 0.5)
+        min_tracking = self.config.get('min_tracking_confidence', 0.5)
+        
         options = pose_landmarker.PoseLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=model_path),
             running_mode=RunningMode.IMAGE,
-            min_pose_presence_confidence=0.5,
-            min_pose_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_pose_presence_confidence=min_presence,
+            min_pose_detection_confidence=min_detection,
+            min_tracking_confidence=min_tracking
         )
         self.pose_estimator = pose_landmarker.PoseLandmarker.create_from_options(options)
 
@@ -74,8 +80,8 @@ class ROIExtractor:
             return frame, (0, 0, W, H), []
 
         lm_list = results.pose_landmarks[0]
-        # Indices for shoulders (11, 12) and hips (23, 24)
-        torso_indices = [11, 12, 23, 24]
+        # Externalized indices for torso (default: shoulders (11, 12) and hips (23, 24))
+        torso_indices = self.config.get('torso_indices', [11, 12, 23, 24])
         pts = [(lm_list[i].x, lm_list[i].y) for i in torso_indices]
         kp_pixels = [(int(x * W), int(y * H)) for x, y in pts]
         

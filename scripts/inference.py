@@ -4,11 +4,12 @@ import time
 import os
 import sys
 import warnings
+import yaml
 from pathlib import Path
 
 # Suppress non-critical warnings from dependencies (YOLOv5/Torch)
 warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
+# warnings.filterwarnings("ignore", category=UserWarning)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TF/MediaPipe noise
 
 # Add src to path
@@ -16,13 +17,21 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.compliance.seatbelt.pipelines import PipelineA, PipelineB
 
-def run_inference(pipeline_type, video_path, yolo_weights, cnn_weights, output_path=None, show=False):
+def load_config(config_path):
+    if not os.path.exists(config_path):
+        print(f"Warning: Config file {config_path} not found. using defaults.")
+        return {}
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+def run_inference(pipeline_type, video_path, yolo_weights, cnn_weights, config=None, output_path=None, show=False):
     device = 'cpu' # default
+    config = config or {}
     
     if pipeline_type == 'A':
-        pipeline = PipelineA(yolo_weights, cnn_weights, device=device)
+        pipeline = PipelineA(yolo_weights, cnn_weights, device=device, config=config)
     else:
-        pipeline = PipelineB(yolo_weights, cnn_weights, device=device)
+        pipeline = PipelineB(yolo_weights, cnn_weights, device=device, config=config)
         
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -63,7 +72,17 @@ def run_inference(pipeline_type, video_path, yolo_weights, cnn_weights, output_p
                 writer.write(annotated)
                 
             if show:
-                cv2.imshow(f"Pipeline {pipeline_type}", annotated)
+                window_name = f"Pipeline {pipeline_type}"
+                # Get display size from config
+                viz_cfg = config.get('visualization', {})
+                dw = viz_cfg.get('display_width', 1280)
+                dh = viz_cfg.get('display_height', 720)
+                
+                # Create resizable window
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(window_name, dw, dh)
+                
+                cv2.imshow(window_name, annotated)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
     finally:
@@ -79,8 +98,13 @@ if __name__ == "__main__":
     parser.add_argument("--video", type=str, required=True, help="Path to input video")
     parser.add_argument("--yolo", type=str, required=True, help="Path to YOLO weights")
     parser.add_argument("--cnn", type=str, required=True, help="Path to CNN weights")
+    parser.add_argument("--config", type=str, default="configs/seatbelt.yaml", help="Path to YAML config")
     parser.add_argument("--output", type=str, help="Path to save output video")
     parser.add_argument("--show", action="store_true", help="Show live preview")
     
     args = parser.parse_args()
-    run_inference(args.type, args.video, args.yolo, args.cnn, args.output, args.show)
+    
+    # Load config
+    cfg = load_config(args.config)
+    
+    run_inference(args.type, args.video, args.yolo, args.cnn, config=cfg, output_path=args.output, show=args.show)

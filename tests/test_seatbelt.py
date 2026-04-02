@@ -25,10 +25,12 @@ def test_roi_extractor_fallback():
 
 def test_ema_smoother():
     """Test EMASmoother logic."""
-    smoother = EMASmoother(alpha=0.5, min_frames=2)
+    smoother = EMASmoother(config={'alpha': 0.5, 'min_frames': 2})
     
     # First frame
     label, conf = smoother.update(0.8)
+    # The new default starting EMA is 0.5. With alpha 0.5, on_prob 0.8:
+    # 0.5*0.8 + 0.5*0.5 = 0.65
     assert label == 'WARMING'
     
     # Second frame (now exceeds min_frames)
@@ -38,7 +40,7 @@ def test_ema_smoother():
 
 def test_majority_vote_smoother():
     """Test MajorityVoteSmoother logic."""
-    smoother = MajorityVoteSmoother(window_size=3)
+    smoother = MajorityVoteSmoother(config={'window_size': 3})
     
     smoother.update(1, 0.9) # ON
     smoother.update(0, 0.8) # OFF

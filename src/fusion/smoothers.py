@@ -3,16 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from collections import deque
-from typing import Tuple, List, Optional, Union
+from typing import Tuple, List, Optional, Union, Dict
 
 class EMASmoother:
     """
     Exponential Moving Average smoother for prediction probabilities.
     """
-    def __init__(self, alpha: float = 0.35, threshold: float = 0.52, min_frames: int = 6):
-        self.alpha = alpha
-        self.threshold = threshold
-        self.min_frames = min_frames
+    def __init__(self, config: Optional[Dict] = None):
+        self.config = config or {}
+        self.alpha = self.config.get('alpha', 0.35)
+        self.threshold = self.config.get('threshold', 0.52)
+        self.min_frames = self.config.get('min_frames', 6)
         self.ema = 0.5
         self.n = 0
 
@@ -33,9 +34,10 @@ class MajorityVoteSmoother:
     """
     Majority vote smoother over a rolling window.
     """
-    def __init__(self, window_size: int = 5):
-        self.window_size = window_size
-        self.history = deque(maxlen=window_size)
+    def __init__(self, config: Optional[Dict] = None):
+        self.config = config or {}
+        self.window_size = self.config.get('window_size', 5)
+        self.history = deque(maxlen=self.window_size)
 
     def reset(self):
         self.history.clear()
