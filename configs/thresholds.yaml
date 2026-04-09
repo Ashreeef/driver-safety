@@ -7,6 +7,9 @@ ear_closure_ratio: 0.75        # alert_threshold = baseline * this
 ear_perclos_ratio: 0.27        # perclos_threshold = baseline * this
 ear_trend_drop_threshold: 0.06
 ear_smooth_frames: 10
+ear_calibration_coverage_ratio: 0.6   # fraction of window frames needed to complete calibration
+ear_calibration_min: 0.10             # ignore samples below this (eye partially closed)
+ear_calibration_max: 0.65  
 mar_threshold: 0.60
 yawn_min_seconds: 2.0
 yawn_window_seconds: 300    # rolling window for frequency counter (seconds)
@@ -23,6 +26,8 @@ landmark_ema_alpha: 0.4     # EMA smoothing (0.2 = heavy, 0.7 = light)
 
 # Module 3: Gaze (Ashref)
 gaze_alert_seconds: 2.0
+gaze_hold_after_loss_sec: 0.4   # seconds to hold last gaze direction after face loss
+gaze_confirm_frames: 3          # consecutive frames required to confirm a direction change
 
 # Module 5: Compliance (Imen & Yacine)
 phone_confidence_threshold: 0.6

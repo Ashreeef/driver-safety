@@ -108,8 +108,6 @@ class MARTracker:
         # Always expose current yawn count for the overlay
         yawn_count = self._yawn_count_in_window()
         result_dict['yawn_count'] = yawn_count
-        if yawn_count >= self.count_alert:
-            result_dict['alerts'].append('Fatigue (Yawn Frequency)')
         return result_dict
 
     def _reset_duration(self):

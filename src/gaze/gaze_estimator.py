@@ -42,15 +42,15 @@ def determine_gaze_direction(h_ratio: float, v_ratio: float) -> str:
 
 class GazeEstimator:
     def __init__(self, thresholds: dict):
-        self.alert_seconds = thresholds.get('gaze_alert_seconds', 2.0)
+        self.alert_seconds        = thresholds.get('gaze_alert_seconds', 2.0)
+        self._hold_after_loss_sec = thresholds.get('gaze_hold_after_loss_sec', 0.4)
+        self._confirm_frames      = thresholds.get('gaze_confirm_frames', 3)
         self.not_forward_start_time = None
-        self._ratio_buf = collections.deque(maxlen=5)
-        self._stable_direction = "forward"
+        self._ratio_buf           = collections.deque(maxlen=5)
+        self._stable_direction    = "forward"
         self._candidate_direction = None
-        self._candidate_count = 0
-        self._confirm_frames = 3
-        self._last_seen_time = None
-        self._hold_after_loss_sec = 0.4
+        self._candidate_count     = 0
+        self._last_seen_time      = None
 
     def _update_stable_direction(self, direction: str) -> str:
         if direction == self._stable_direction:
