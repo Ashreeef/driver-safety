@@ -1,7 +1,9 @@
 import time
 import collections
 import numpy as np
-from src.face_mesh.landmark_utils import MOUTH_MAR
+from src.face_mesh.landmark_utils import (
+    MOUTH_MAR_TOP, MOUTH_MAR_BOTTOM, MOUTH_MAR_LEFT, MOUTH_MAR_RIGHT
+)
 
 
 def euclidean_dist(p1, p2):
@@ -9,14 +11,29 @@ def euclidean_dist(p1, p2):
 
 
 def compute_mar(landmarks: np.ndarray) -> float:
-    """Computes MAR using the same formula structure as EAR on mouth landmarks."""
-    p1, p2, p3, p4, p5, p6 = landmarks[MOUTH_MAR]
-    vertical_1 = euclidean_dist(p2, p6)
-    vertical_2 = euclidean_dist(p3, p5)
-    horizontal = euclidean_dist(p1, p4)
+    """
+    Computes MAR as vertical lip distance / horizontal mouth width.
+
+    Uses landmark 13 (upper lip center) and 14 (lower lip center) because
+    these are the extreme vertical points of the lips — maximum signal for
+    yawn detection. Previous indices (82, 87, 312, 317) were near the
+    corners and measured roughly half the actual jaw opening.
+
+    Typical values:
+      closed mouth : 0.05 – 0.15
+      speaking     : 0.20 – 0.35
+      mild yawn    : 0.35 – 0.50
+      wide yawn    : 0.50 – 0.75
+    """
+    vertical   = euclidean_dist(
+        landmarks[MOUTH_MAR_TOP], landmarks[MOUTH_MAR_BOTTOM]
+    )
+    horizontal = euclidean_dist(
+        landmarks[MOUTH_MAR_LEFT], landmarks[MOUTH_MAR_RIGHT]
+    )
     if horizontal == 0:
         return 0.0
-    return (vertical_1 + vertical_2) / (2.0 * horizontal)
+    return vertical / horizontal
 
 
 class MARTracker:
