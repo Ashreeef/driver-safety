@@ -75,6 +75,16 @@ def main():
             put(f"Head P:{result['pitch']:.0f} Y:{result['yaw']:.0f} [{result['head_pose_method']}]")
             put(f"Yawns: {result.get('yawn_count', 0)}")
 
+            gaze_h = result.get('gaze_h_ratio')
+            gaze_v = result.get('gaze_v_ratio')
+            calib  = result.get('gaze_calibrated', False)
+            prog   = result.get('gaze_calib_progress', 0.0)
+
+            if not calib:
+                put(f"Gaze CAL: {prog*100:.0f}% — look straight ahead", color=(0,165,255))
+            else:
+                put(f"Gaze: {result.get('gaze_direction','--')}  h={gaze_h:.3f}  v={gaze_v:.3f}")
+
             for alert in result['alerts']:
                 put(f"!! {alert}", color=(0, 0, 255))
         else:

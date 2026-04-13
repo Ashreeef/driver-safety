@@ -27,9 +27,14 @@ landmark_ema_alpha: 0.4     # EMA smoothing (0.2 = heavy, 0.7 = light)
 # Module 3: Gaze (Ashref)
 gaze_alert_seconds: 2.0
 gaze_hold_after_loss_sec: 0.4
-gaze_confirm_frames: 3
-gaze_yaw_correction_scale: 0.008    # to increase if head turns still leak through
-gaze_pitch_correction_scale: 0.005
+gaze_confirm_frames: 5
+gaze_yaw_correction_scale: 0.0    # to increase if head turns still leak through
+gaze_pitch_correction_scale: 0.0
+# Deviation from neutral required to trigger a direction (tunable)
+gaze_h_threshold: 0.12             # horizontal: symmetric left/right
+gaze_v_up_threshold: 0.10          # vertical: looking up
+gaze_v_down_threshold: 0.13        # vertical: looking down (slightly easier to detect)
+
 
 # Module 5: Compliance (Imen & Yacine)
 phone_confidence_threshold: 0.6
