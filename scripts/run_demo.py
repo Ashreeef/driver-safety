@@ -129,19 +129,30 @@ def main():
             put(f"Yawns  {result.get('yawn_count', 0)}", color=(180, 180, 180))
             put("-" * 16, color=(70, 70, 70))
 
-            gaze_dir = result.get('gaze_direction', '--')
-            gaze_cal = result.get('gaze_calibrated', False)
+            gaze_dir  = result.get('gaze_direction', '--')
+            gaze_cal  = result.get('gaze_calibrated', False)
             gaze_prog = result.get('gaze_calib_progress', 0.0)
-            gaze_h = result.get('gaze_h_ratio')
-            gaze_v = result.get('gaze_v_ratio')
+            gaze_h    = result.get('gaze_h_ratio')
+            gaze_v    = result.get('gaze_v_ratio')
 
-            if not gaze_cal:
+            # Determine which signal is driving gaze (head vs iris)
+            head_yaw_thresh   = thresholds.get('gaze_head_yaw_threshold', 20.0)
+            head_pd_thresh    = thresholds.get('gaze_head_pitch_down_threshold', 15.0)
+            head_pu_thresh    = thresholds.get('gaze_head_pitch_up_threshold', 10.0)
+            yaw_abs  = abs(result.get('yaw', 0.0))
+            pitch_v  = result.get('pitch', 0.0)
+            head_driven = (yaw_abs > head_yaw_thresh or
+                           pitch_v > head_pd_thresh or
+                           pitch_v < -head_pu_thresh)
+            gaze_signal = "H" if head_driven else ("I" if gaze_cal else "?")
+
+            if not gaze_cal and not head_driven:
                 put(f"GAZE CAL  {gaze_prog * 100:.0f}%", color=(180, 180, 60))
                 put("Look straight ahead", color=(150, 150, 150))
             else:
                 gaze_color = (100, 220, 100) if gaze_dir == 'forward' else (0, 80, 255)
-                put(f"Gaze  {gaze_dir}", color=gaze_color)
-                if gaze_h is not None and gaze_v is not None:
+                put(f"Gaze  {gaze_dir}  [{gaze_signal}]", color=gaze_color)
+                if gaze_h is not None and gaze_v is not None and not head_driven:
                     put(f"h={gaze_h:.3f}  v={gaze_v:.3f}", color=(150, 150, 150))
 
             put(
