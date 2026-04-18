@@ -1,0 +1,2 @@
+mediapipe:
+  face_landmarker: "models/mediapipe/face_landmarker.task"
