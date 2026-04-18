@@ -15,7 +15,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TF/MediaPipe noise
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.compliance.seatbelt.pipelines import PipelineA, PipelineB
+from src.compliance.seatbelt.pipelines import Pipeline1, Pipeline2, Pipeline3
 
 def load_config(config_path):
     if not os.path.exists(config_path):
@@ -28,10 +28,14 @@ def run_inference(pipeline_type, video_path, yolo_weights, cnn_weights, config=N
     device = 'cpu' # default
     config = config or {}
     
-    if pipeline_type == 'A':
-        pipeline = PipelineA(yolo_weights, cnn_weights, device=device, config=config)
+    if pipeline_type == '1':
+        pipeline = Pipeline1(yolo_weights, cnn_weights, device=device, config=config)
+    elif pipeline_type == '2':
+        pipeline = Pipeline2(yolo_weights, cnn_weights, device=device, config=config)
+    elif pipeline_type == '3':
+        pipeline = Pipeline3(cnn_weights, device=device, config=config)
     else:
-        pipeline = PipelineB(yolo_weights, cnn_weights, device=device, config=config)
+        raise ValueError(f"Unknown pipeline type: {pipeline_type}")
         
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -94,7 +98,7 @@ def run_inference(pipeline_type, video_path, yolo_weights, cnn_weights, config=N
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seatbelt Detection Inference")
-    parser.add_argument("--type", type=str, choices=['A', 'B'], default='B', help="Pipeline type (A or B)")
+    parser.add_argument("--type", type=str, choices=['1', '2', '3'], default='2', help="Pipeline type (1, 2, or 3)")
     parser.add_argument("--video", type=str, required=True, help="Path to input video")
     parser.add_argument("--yolo", type=str, required=True, help="Path to YOLO weights")
     parser.add_argument("--cnn", type=str, required=True, help="Path to CNN weights")
@@ -102,9 +106,19 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="Path to save output video")
     parser.add_argument("--show", action="store_true", help="Show live preview")
     
+    # Rate Gate override
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--rate-gate", action="store_true", dest="rate_gate", default=None, help="Enable rate gate (overrides YAML)")
+    group.add_argument("--no-rate-gate", action="store_false", dest="rate_gate", help="Disable rate gate (overrides YAML)")
+    
     args = parser.parse_args()
     
     # Load config
     cfg = load_config(args.config)
+    
+    # Apply CLI override for rate gate
+    if args.rate_gate is not None:
+        if 'rate_gate' not in cfg: cfg['rate_gate'] = {}
+        cfg['rate_gate']['enabled'] = args.rate_gate
     
     run_inference(args.type, args.video, args.yolo, args.cnn, config=cfg, output_path=args.output, show=args.show)

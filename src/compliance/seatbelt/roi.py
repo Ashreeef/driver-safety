@@ -128,8 +128,13 @@ def get_yolo_roi_boxes(yolo_model, frame: np.ndarray, conf_thresh: float = 0.45)
             if conf >= conf_thresh:
                 boxes.append((int(x1), int(y1), int(x2), int(y2), float(conf)))
         return boxes
-    else: # YOLOv8/v10
-        results = yolo_model(frame, verbose=False, conf=conf_thresh)
+    else: # YOLOv8/v10/etc via ultralytics class
+        try:
+            results = yolo_model(frame, verbose=False, conf=conf_thresh)
+        except TypeError:
+            # Handle cases where 'verbose' is not supported in the underlying model's fuse method
+            results = yolo_model(frame, conf=conf_thresh)
+            
         boxes = []
         for r in results:
             if r.boxes:

@@ -41,6 +41,20 @@ fusion:
   yolo_weight: 0.8
   agreement_threshold: 0.75
 
+# ── Rolling ON/OFF Rate Gate ───────────────────────────────────────────────
+# Fires an authoritative prediction when the fraction of ON (or OFF) frames
+# in the last `window_size` frames crosses the threshold.
+#
+#   on_threshold  – if ON  rate ≥ this value → force label = ON
+#   off_threshold – if OFF rate ≥ this value → force label = OFF
+#
+# Set enabled: false to disable (pipelines fall through to smoother output).
+rate_gate:
+  enabled:       true
+  window_size:   30      # number of recent frames tracked
+  on_threshold:  0.80    # 60 % of window must be ON  to fire
+  off_threshold: 0.90    # 60 % of window must be OFF to fire
+
 visualization:
   colors:
     'ON': [0, 200, 0]
@@ -53,3 +67,9 @@ visualization:
   font_thickness: 2
   display_width: 1280
   display_height: 720
+
+pipelines:
+  pipeline1:
+    classifier_type: "yolo" # "cnn" or "yolo"
+  pipeline3:
+    smoother_type: "ema" # "ema" or "majority"
