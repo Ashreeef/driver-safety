@@ -16,6 +16,8 @@ def test_ear_tracker():
     class _FakeCalibrator:
         calibrated = False
         baseline = None
+        def feed(self, ear):
+            return False
         @property
         def alert_threshold(self):
             return thresholds['ear_threshold']   # 0.20

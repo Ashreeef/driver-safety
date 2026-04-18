@@ -122,6 +122,7 @@ class EARTracker:
            result_dict.get('landmarks') is None:
             result_dict['ear'] = None
             self._counter = 0
+            self._smooth_buf.clear()   # discard stale values — don't blend into next valid frame
             return result_dict
 
         lm = result_dict['landmarks']

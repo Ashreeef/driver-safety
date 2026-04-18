@@ -305,7 +305,11 @@ class GazeEstimator:
         result_dict['gaze_calib_progress'] = self.calibration_progress()
         self._last_seen_time = time.time()
 
-        # Alert timer — only fires after calibration is done
+        self._update_alert(result_dict, stable_direction)
+        return result_dict
+
+    def _update_alert(self, result_dict: dict, stable_direction: str):
+        """Drive the distraction alert timer. Extracted for testability."""
         if self._calibrated and stable_direction != "forward":
             if self.not_forward_start_time is None:
                 self.not_forward_start_time = time.time()
@@ -316,5 +320,3 @@ class GazeEstimator:
                         result_dict['alerts'].append('Distraction (Gaze)')
         else:
             self.not_forward_start_time = None
-
-        return result_dict

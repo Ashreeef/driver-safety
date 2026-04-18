@@ -47,7 +47,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
     cap.set(cv2.CAP_PROP_FPS,          fps)
 
-    print("Press 'q' to quit.")
+    print("Press 'q' to quit  |  'r' to reset gaze calibration.")
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
