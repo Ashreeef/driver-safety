@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import argparse
 import cv2
 import yaml
 from src.face_mesh.mediapipe_pipeline import FaceMeshDetector
@@ -18,6 +19,11 @@ def load_configs():
     return thresholds, paths
 
 def main():
+    parser = argparse.ArgumentParser(description='Driver fatigue detection demo')
+    parser.add_argument('--source', default=None,
+                        help='Video source: camera index (0, 1, …) or path to video file')
+    args = parser.parse_args()
+
     thresholds, paths = load_configs()
     fps = thresholds.get('camera_fps', 15)
 
@@ -30,7 +36,12 @@ def main():
     perclos      = PERCLOSTracker(thresholds, calibrator, fps=fps)
     gaze         = GazeEstimator(thresholds)
 
-    source = thresholds.get('camera_source', 0)
+    # CLI --source overrides thresholds.yaml; fall back to yaml value then 0
+    if args.source is not None:
+        raw = args.source
+        source = int(raw) if raw.isdigit() else raw
+    else:
+        source = thresholds.get('camera_source', 0)
     cap    = cv2.VideoCapture(source)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
@@ -150,8 +161,12 @@ def main():
             put(f"Pitch:{result['pitch']:.0f}  Yaw:{result['yaw']:.0f}", color=(0, 140, 255))
 
         cv2.imshow('Fatigue Detection', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
+        elif key == ord('r'):
+            gaze.reset_calibration()
+            print("[run_demo] Gaze calibration reset.")
 
     cap.release()
     cv2.destroyAllWindows()

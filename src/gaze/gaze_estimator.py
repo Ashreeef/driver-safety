@@ -17,7 +17,8 @@ def compute_gaze_ratios(landmarks: np.ndarray,
                         eye_indices: list,
                         iris_indices: list):
     min_x, max_x, min_y, max_y = get_bounding_box(landmarks, eye_indices)
-    iris_center = landmarks[iris_indices[0]]
+    # Use iris centroid (all iris points) for more stable vertical signal.
+    iris_center = np.mean(landmarks[iris_indices], axis=0)
     iris_x, iris_y = iris_center[0], iris_center[1]
     width  = max_x - min_x
     height = max_y - min_y
@@ -58,6 +59,7 @@ class GazeEstimator:
         self._h_thresh   = thresholds.get('gaze_h_threshold', 0.12)
         self._v_up_thresh   = thresholds.get('gaze_v_up_threshold', 0.10)
         self._v_down_thresh = thresholds.get('gaze_v_down_threshold', 0.13)
+        self._invert_vertical = thresholds.get('gaze_vertical_invert', True)
 
         # Head-pose correction — set to 0 until you verify iris tracking works
         # on its own. Only enable after confirming iris-only detection is correct.
@@ -73,7 +75,8 @@ class GazeEstimator:
         self._calibrated  = False
 
         # Smoothing buffer
-        self._ratio_buf = collections.deque(maxlen=5)
+        smooth_frames = int(thresholds.get('gaze_smoothing_frames', 3))
+        self._ratio_buf = collections.deque(maxlen=max(1, smooth_frames))
 
         # Direction stabilizer
         self._stable_direction    = "forward"
@@ -129,12 +132,16 @@ class GazeEstimator:
         """
         if self._calibrated:
             dh = h_ratio - self._neutral_h   # positive = iris moved right = looking right
-            dv = v_ratio - self._neutral_v   # positive = iris moved down  = looking down
+            dv_raw = v_ratio - self._neutral_v   # positive = iris moved down in image
+
+            # Some camera/model setups produce inverted vertical gaze response.
+            # When enabled, positive dv means "looking up" in classifier space.
+            dv = -dv_raw if self._invert_vertical else dv_raw
 
             # Vertical takes priority over horizontal (down-gaze is safety-critical)
-            if dv < -self._v_up_thresh:
+            if dv > self._v_up_thresh:
                 return "up"
-            if dv >  self._v_down_thresh:
+            if dv < -self._v_down_thresh:
                 return "down"
             if dh < -self._h_thresh:
                 return "left"
@@ -145,10 +152,19 @@ class GazeEstimator:
         else:
             # Pre-calibration fallback — wide zones to avoid false alerts
             # while calibration is in progress.
-            if v_ratio < 0.25:
-                return "up"
-            if v_ratio > 0.75:
-                return "down"
+            # Mirror the calibrated-path convention:
+            #   invert_vertical=True  → standard camera: small v_ratio = iris up = looking up
+            #   invert_vertical=False → this camera:     small v_ratio = looking down
+            if self._invert_vertical:
+                if v_ratio < 0.25:
+                    return "up"
+                if v_ratio > 0.75:
+                    return "down"
+            else:
+                if v_ratio < 0.25:
+                    return "down"
+                if v_ratio > 0.75:
+                    return "up"
             if h_ratio < 0.30:
                 return "left"
             if h_ratio > 0.70:
@@ -191,6 +207,8 @@ class GazeEstimator:
             else:
                 self.not_forward_start_time   = None
                 result_dict['gaze_direction'] = None
+            result_dict['gaze_calibrated']      = self._calibrated
+            result_dict['gaze_calib_progress']  = self.calibration_progress()
             return result_dict
 
         landmarks = result_dict['landmarks']

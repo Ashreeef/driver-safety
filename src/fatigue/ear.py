@@ -65,8 +65,8 @@ class EARCalibrator:
         """
         Feed one raw EAR sample during calibration.
         Returns True when calibration completes on this call.
-        Ignores samples outside a plausible alert range (0.15 – 0.55)
-        to avoid collecting closed-eye frames.
+        Ignores samples outside [ear_calibration_min, ear_calibration_max]
+        (default 0.10 – 0.65) to avoid collecting closed-eye frames.
         """
         if self.calibrated or ear is None:
             return False

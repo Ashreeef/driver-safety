@@ -106,7 +106,7 @@ class LandmarkStabilizer:
 
         if self._prev is None:
             # First valid frame — no previous state, store and pass through
-            self._prev = landmarks.astype(np.float32).copy()
+            self._prev = landmarks.astype(np.float32)
             return self._prev
 
         # EMA: blend current raw with previous smoothed
