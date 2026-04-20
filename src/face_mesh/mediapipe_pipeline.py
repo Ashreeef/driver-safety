@@ -62,21 +62,34 @@ class FaceMeshDetector:
 
     def process_frame(self, image_bgr: np.ndarray) -> dict:
         result_dict = {
-            "landmarks":        None,
-            "pitch":            0.0,
-            "yaw":              0.0,
-            "roll":             0.0,
-            "valid":            False,
-            "ear":              None,
-            "ear_raw":          None,
-            "ear_calibrated":   False,
-            "ear_baseline":     None,
-            "mar":              None,
-            "perclos":          None,
-            "gaze_direction":   None,
-            "yawn_count":       0,
-            "head_pose_method": "none",
-            "alerts":           [],
+            "landmarks":           None,
+            "pitch":               0.0,
+            "yaw":                 0.0,
+            "roll":                0.0,
+            "valid":               False,
+            "head_pose_method":    "none",
+            # Module 2
+            "ear":                 None,
+            "ear_raw":             None,
+            "ear_calibrated":      False,
+            "ear_baseline":        None,
+            "mar":                 None,
+            "perclos":             None,
+            "yawn_count":          0,
+            # Module 3
+            "gaze_direction":      None,
+            "gaze_h_ratio":        None,
+            "gaze_v_ratio":        None,
+            "gaze_calibrated":     False,
+            "gaze_calib_progress": 0.0,
+            # Module 5 (stubs — populated when those modules are active)
+            "smoking_detected":      False,
+            "smoking_proximity_sec": 0.0,
+            "smoking_hand_visible":  False,
+            "smoking_wrist_ok":      False,
+            "seatbelt_detected":     False,
+            "phone_detected":        False,
+            "alerts":              [],
         }
 
         # --- MediaPipe detection ---

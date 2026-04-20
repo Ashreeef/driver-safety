@@ -7,7 +7,10 @@ ear_closure_ratio: 0.75        # alert_threshold = baseline * this
 ear_perclos_ratio: 0.27        # perclos_threshold = baseline * this
 ear_trend_drop_threshold: 0.06
 ear_smooth_frames: 10
-mar_threshold: 0.60
+ear_calibration_coverage_ratio: 0.6   # fraction of window frames needed to complete calibration
+ear_calibration_min: 0.10             # ignore samples below this (eye partially closed)
+ear_calibration_max: 0.65  
+mar_threshold: 0.5
 yawn_min_seconds: 2.0
 yawn_window_seconds: 300    # rolling window for frequency counter (seconds)
 yawn_count_alert: 3         # how many yawns trigger the frequency alert
@@ -22,7 +25,34 @@ camera_pitch_offset: 0      # WILL BE tuned to mount angle
 landmark_ema_alpha: 0.4     # EMA smoothing (0.2 = heavy, 0.7 = light)
 
 # Module 3: Gaze (Ashref)
-gaze_alert_seconds: 2.0
+# ---- Calibration ----
+gaze_calib_frames: 40              # valid near-forward frames needed for iris neutral
+gaze_calib_max_head_yaw: 10.0     # reject calibration frame if |yaw| > this (deg)
+gaze_calib_max_head_pitch: 8.0    # reject calibration frame if |pitch| > this (deg)
+
+# ---- Head-pose primary thresholds (degrees) ----
+# When head exceeds these angles, iris bounding box is distorted — head pose
+# drives the gaze direction directly. Keeps iris reliable within its valid zone.
+gaze_head_yaw_threshold: 20.0        # ±20°: covers lane changes without false alerts
+gaze_head_pitch_down_threshold: 15.0 # >15° down: dashboard / phone / fatigue head-drop
+gaze_head_pitch_up_threshold: 10.0   # <-10° up: overhead signs / unusual posture
+
+# ---- Iris deviation thresholds (used only when head is near-forward) ----
+gaze_h_threshold: 0.14             # horizontal deviation from neutral — symmetric
+gaze_v_up_threshold: 0.10          # upward deviation (wider than down due to eyelid)
+gaze_v_down_threshold: 0.12        # downward deviation
+gaze_vertical_invert: false        # false = this camera: higher v_ratio → looking up
+
+# ---- Head-pose correction for iris (disabled — enable only after iris verified) ----
+gaze_yaw_correction_scale: 0.0
+gaze_pitch_correction_scale: 0.0
+
+# ---- Timing and stability ----
+gaze_smoothing_frames: 5           # iris ratio smoothing window (frames)
+gaze_confirm_frames: 8             # frames a direction must persist to be "stable" (~533ms@15fps)
+gaze_alert_seconds: 2.5            # sustained non-forward time before alert fires
+gaze_hold_after_loss_sec: 0.4     # keep last direction for this long after face lost
+
 
 # Module 5: Compliance (Imen & Yacine)
 phone_confidence_threshold: 0.6

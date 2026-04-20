@@ -10,8 +10,16 @@ IRIS_LEFT         = [468, 469, 470, 471, 472]
 IRIS_RIGHT        = [473, 474, 475, 476, 477]
 HEAD_POSE_PTS     = [1, 152, 263, 33, 287, 57]
 
-# WILL VERIFY THESE INDICES ON A REAL VIDEO — inner lip points, may need adjustment
-MOUTH_MAR         = [78, 82, 312, 308, 317, 87]
+# 4-point MAR: extreme upper/lower lip centers + mouth corners.
+# 13  = upper lip center (highest point on upper lip)
+# 14  = lower lip center (lowest point on lower lip)
+# 78  = left mouth corner
+# 308 = right mouth corner
+# These four give maximum vertical excursion signal for yawn detection.
+MOUTH_MAR_TOP   = 13
+MOUTH_MAR_BOTTOM = 14
+MOUTH_MAR_LEFT  = 78
+MOUTH_MAR_RIGHT = 308
 
 # Full eye contour for gaze bounding box (not EAR points)
 LEFT_EYE_CONTOUR  = [
@@ -98,7 +106,7 @@ class LandmarkStabilizer:
 
         if self._prev is None:
             # First valid frame — no previous state, store and pass through
-            self._prev = landmarks.astype(np.float32).copy()
+            self._prev = landmarks.astype(np.float32)
             return self._prev
 
         # EMA: blend current raw with previous smoothed

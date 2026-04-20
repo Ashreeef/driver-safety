@@ -3,8 +3,27 @@ import numpy as np
 from src.fatigue.ear import compute_ear, EARTracker
 
 def test_ear_tracker():
-    thresholds = {'ear_threshold': 0.20, 'ear_consec_frames': 2, 'ear_closure_threshold': 0.05}
-    tracker = EARTracker(thresholds)
+    thresholds = {
+        'ear_threshold': 0.20,
+        'ear_consec_frames': 2,
+        'ear_closure_threshold': 0.05,
+        'ear_closure_ratio': 0.75,
+        'ear_perclos_ratio': 0.27,
+        'ear_smooth_frames': 1,       # disable smoothing in unit test
+        'ear_trend_drop_threshold': 0.06,
+    }
+
+    class _FakeCalibrator:
+        calibrated = False
+        baseline = None
+        def feed(self, ear):
+            return False
+        @property
+        def alert_threshold(self):
+            return thresholds['ear_threshold']   # 0.20
+
+    calibrator = _FakeCalibrator()
+    tracker = EARTracker(thresholds, calibrator)
     
     landmarks = np.zeros((478, 3))
     
@@ -38,10 +57,10 @@ def test_ear_tracker():
     result = {'valid': True, 'landmarks': landmarks, 'alerts': []}
     result = tracker.update(result)
     
-    assert result['ear'] == 0.0
-    assert len(result['alerts']) == 0  # 1st closed frame, alert requires 2
-    
+    assert result['ear'] < calibrator.alert_threshold   # closed eye, below threshold
+    assert 'Drowsiness (EAR)' not in result['alerts']   # only 1 frame so far, need 2
+
     result = {'valid': True, 'landmarks': landmarks, 'alerts': []}
     result = tracker.update(result)
     
-    assert 'Drowsiness (EAR)' in result['alerts']
+    assert 'Drowsiness (EAR)' in result['alerts']       # 2nd consecutive frame → alert

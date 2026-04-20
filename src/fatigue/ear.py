@@ -65,8 +65,8 @@ class EARCalibrator:
         """
         Feed one raw EAR sample during calibration.
         Returns True when calibration completes on this call.
-        Ignores samples outside a plausible alert range (0.15 – 0.55)
-        to avoid collecting closed-eye frames.
+        Ignores samples outside [ear_calibration_min, ear_calibration_max]
+        (default 0.10 – 0.65) to avoid collecting closed-eye frames.
         """
         if self.calibrated or ear is None:
             return False
@@ -112,15 +112,17 @@ class EARTracker:
         self.trend_drop    = thresholds.get('ear_trend_drop_threshold', 0.06)
         self.smooth_window = thresholds.get('ear_smooth_frames', 10)
 
-        self._counter      = 0
-        self._smooth_buf   = collections.deque(maxlen=self.smooth_window)
-        self._trend_buf    = collections.deque(maxlen=30)
+        self._counter           = 0
+        self._smooth_buf        = collections.deque(maxlen=self.smooth_window)
+        self._trend_buf         = collections.deque(maxlen=30)
+        self._trend_alerted     = False   # True while trend condition is active
 
     def update(self, result_dict: dict) -> dict:
         if not result_dict.get('valid', False) or \
            result_dict.get('landmarks') is None:
             result_dict['ear'] = None
             self._counter = 0
+            self._smooth_buf.clear()   # discard stale values — don't blend into next valid frame
             return result_dict
 
         lm = result_dict['landmarks']
@@ -148,11 +150,17 @@ class EARTracker:
             self._counter = 0
 
         # Trend alert — gradual drift downward
+        # Fires once when the drop is first detected; resets when EAR recovers.
         self._trend_buf.append(smoothed)
         if len(self._trend_buf) == 30:
             first  = np.mean(list(self._trend_buf)[:15])
             second = np.mean(list(self._trend_buf)[15:])
-            if (first - second) > self.trend_drop:
+            trend_dropping = (first - second) > self.trend_drop
+
+            if trend_dropping and not self._trend_alerted:
                 result_dict['alerts'].append('Fatigue (EAR Trend)')
+                self._trend_alerted = True
+            elif not trend_dropping:
+                self._trend_alerted = False   # EAR recovered — re-arm
 
         return result_dict
