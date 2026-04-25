@@ -14,11 +14,12 @@ landmarks:
   # MediaPipe HandLandmarker Settings
   min_hand_detection_confidence: 0.5
   min_hand_tracking_confidence: 0.5
-  
-  # MediaPipe FaceLandmarker Settings
-  min_face_detection_confidence: 0.5
-  min_face_presence_confidence: 0.5
-  
+
+  # MediaPipe PoseLandmarker Settings (for elbow-angle bonus)
+  min_pose_detection_confidence: 0.5
+  min_pose_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
   # Thresholds for behavioral inference
   hand_mouth_dist_thresh: 0.15   # Normalised distance [0, 1]
   elbow_angle_min: 30.0          # Degrees

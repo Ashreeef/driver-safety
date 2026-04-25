@@ -139,12 +139,14 @@ class OverlayRenderer:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class UnifiedSafetyMonitor:
-    def __init__(self, smoking_cfg_path: str, seatbelt_cfg: Dict, sb_yolo: str, sb_clf: str, sm_weights: Optional[str] = None):
+    def __init__(self, smoking_cfg_path: str, seatbelt_cfg: Dict, sb_yolo: str, sb_clf: str,
+                 model_paths: Dict, sm_weights: Optional[str] = None):
         self.smoking_cfg = load_yaml(smoking_cfg_path)
         self.seatbelt_cfg = seatbelt_cfg
-        
+
         print("  Loading Smoking Subsystem...")
-        self.extractor = LandmarkExtractor(self.smoking_cfg.get('landmarks', {}))
+        mp_paths = model_paths.get('mediapipe', {})
+        self.extractor = LandmarkExtractor(self.smoking_cfg.get('landmarks', {}), model_paths=mp_paths)
         self.smoking_detector = SmokingDetector(self.smoking_cfg, self.extractor, sm_weights)
         
         print(f"  Loading Seatbelt Subsystem (Pipeline 1: YOLO ROI)...")
@@ -232,8 +234,10 @@ if __name__ == "__main__":
     # Paths
     sm_cfg = os.path.join(_PROJECT_ROOT, "configs", "smoking.yaml")
     sb_cfg_path = os.path.join(_PROJECT_ROOT, "configs", "seatbelt.yaml")
+    mp_cfg_path = os.path.join(_PROJECT_ROOT, "configs", "model_paths.yaml")
     sb_cfg = load_yaml(sb_cfg_path)
-    
+    mp_paths = load_yaml(mp_cfg_path)
+
     # Apply CLI override for rate gate
     if args.rate_gate is not None:
         if 'rate_gate' not in sb_cfg: sb_cfg['rate_gate'] = {}
@@ -245,5 +249,6 @@ if __name__ == "__main__":
     if not os.path.exists(args.sb_clf):
         print(f"⚠ Warning: Seatbelt Classifier weights not found at {args.sb_clf}")
 
-    monitor = UnifiedSafetyMonitor(sm_cfg, sb_cfg, args.sb_yolo, args.sb_clf, args.sm_weights)
+    monitor = UnifiedSafetyMonitor(sm_cfg, sb_cfg, args.sb_yolo, args.sb_clf,
+                                   model_paths=mp_paths, sm_weights=args.sm_weights)
     monitor.run(args.video, args.output, args.show)

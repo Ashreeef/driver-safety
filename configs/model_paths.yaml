@@ -1,2 +1,4 @@
 mediapipe:
   face_landmarker: "models/mediapipe/face_landmarker.task"
+  hand_landmarker: "models/mediapipe/hand_landmarker.task"
+  pose_landmarker: "models/mediapipe/pose_landmarker_lite.task"

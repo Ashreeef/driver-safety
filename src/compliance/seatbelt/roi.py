@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import os
-import urllib.request
 from typing import Tuple, List, Optional, Union, Dict
 
 # MediaPipe imports
@@ -17,29 +16,33 @@ class ROIExtractor:
     """
     Standard interface for extracting regions of interest (ROI) from frames.
     Supports MediaPipe Pose landmarks and YOLO-based detection.
+
+    model_path must be supplied explicitly (from model_paths.yaml).
+    Models are never downloaded at runtime — place the .task file under
+    models/mediapipe/ before first use.
     """
-    
+
     def __init__(self, method: str = 'mediapipe', model_path: Optional[str] = None, config: Optional[Dict] = None):
         self.method = method
         self.model_path = model_path
         self.config = config or {}
         self.pose_estimator = None
-        
+
         if method == 'mediapipe' and MEDIAPIPE_AVAILABLE:
             self._init_mediapipe(model_path)
-            
+
     def _init_mediapipe(self, model_path: Optional[str]):
         if model_path is None:
-            model_dir = os.path.join("weights", "mediapipe")
-            os.makedirs(model_dir, exist_ok=True)
-            model_path = os.path.join(model_dir, "pose_landmarker_lite.task")
-            
-            url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-            if not os.path.exists(model_path):
-                print(f"Downloading {model_path}...")
-                urllib.request.urlretrieve(url, model_path)
-        
-        # Externalized settings
+            raise ValueError(
+                "ROIExtractor requires an explicit model_path. "
+                "Pass model_paths['mediapipe']['pose_landmarker'] from model_paths.yaml."
+            )
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                f"Pose landmarker model not found at '{model_path}'. "
+                "Place the .task file there before running."
+            )
+
         min_presence = self.config.get('min_pose_presence_confidence', 0.5)
         min_detection = self.config.get('min_pose_detection_confidence', 0.5)
         min_tracking = self.config.get('min_tracking_confidence', 0.5)
