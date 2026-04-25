@@ -69,13 +69,21 @@ def load_config(path: str) -> dict:
 
 
 def accumulate(heatmap: np.ndarray, x1: int, y1: int, x2: int, y2: int,
-               weight: float = 1.0) -> None:
-    """Add *weight* to every pixel inside the bounding box."""
+               weight: float = 1.0, local_hm: np.ndarray = None) -> None:
+    """Add *weight* to pixels inside the bounding box, optionally guided by Grad-CAM."""
     x1 = max(0, x1); y1 = max(0, y1)
     x2 = min(heatmap.shape[1] - 1, x2)
     y2 = min(heatmap.shape[0] - 1, y2)
+    
     if x2 > x1 and y2 > y1:
-        heatmap[y1:y2, x1:x2] += weight
+        if local_hm is not None:
+            # Resize local Grad-CAM heatmap to fit the bbox
+            h, w = y2 - y1, x2 - x1
+            local_resized = cv2.resize(local_hm, (w, h))
+            heatmap[y1:y2, x1:x2] += local_resized * weight
+        else:
+            # Fallback to uniform box accumulation
+            heatmap[y1:y2, x1:x2] += weight
 
 
 def render_heatmap(raw_frame: np.ndarray, heatmap: np.ndarray,
@@ -94,8 +102,8 @@ def render_heatmap(raw_frame: np.ndarray, heatmap: np.ndarray,
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
         return out
 
-    # Gaussian blur to soften edges (kernel proportional to frame size)
-    k = max(3, (min(H, W) // 20) | 1)   # must be odd
+    # Gaussian blur to soften edges - REDUCED for Grad-CAM detail
+    k = max(3, (min(H, W) // 60) | 1)   # changed from //20 to //60
     blurred = cv2.GaussianBlur(heatmap, (k, k), 0)
 
     normed = cv2.normalize(blurred, None, 0, 255,
@@ -156,20 +164,34 @@ def build_strip(original: np.ndarray, annotated: np.ndarray,
     return strip
 
 
-def extract_active_boxes(pipeline, result, frame_shape) -> list:
+def extract_active_regions(pipeline, result, frame) -> list:
     """
     Given the raw result returned by each pipeline's process_frame, return a
-    list of (x1, y1, x2, y2, confidence) for every region that contributed
-    to an ON prediction.
-
-    Supported result shapes
-    -----------------------
-    dict with 'detections' key  – Pipeline 1 (scene dict)
-    dict without 'detections'   – Pipeline 2 / 3
-    list                        – Pipeline 1 old format (backward compat)
+    list of (x1, y1, x2, y2, confidence, local_heatmap) for every region 
+    that contributed to an ON prediction.
     """
-    H, W = frame_shape[:2]
-    boxes = []
+    H, W = frame.shape[:2]
+    regions = []
+    
+    if not hasattr(pipeline, '_grad_cams'):
+        pipeline._grad_cams = {}
+
+    def get_gradcam(roi, model_obj, key):
+        if key not in pipeline._grad_cams:
+            from src.utils.gradcam import YOLOGradCAM, GradCAM
+            # Check for SeatbeltClassifier first (it has its own grad_cam instance)
+            if hasattr(model_obj, 'get_grad_cam'):
+                return model_obj.get_grad_cam(roi)
+            # Check for YOLO (ultralytics.YOLO class usually has 'model' and 'predictor')
+            elif hasattr(model_obj, 'predict') and hasattr(model_obj, 'model') and not hasattr(model_obj, 'grad_cam'):
+                pipeline._grad_cams[key] = YOLOGradCAM(model_obj)
+            else:
+                return None
+        
+        gc = pipeline._grad_cams[key]
+        if hasattr(gc, 'get_heatmap'): # YOLOGradCAM
+            return gc.get_heatmap(roi)
+        return None
 
     # ── Pipeline 1 new format: scene dict ───────────────────────────────────
     if isinstance(result, dict) and 'detections' in result:
@@ -178,17 +200,24 @@ def extract_active_boxes(pipeline, result, frame_shape) -> list:
             dets = result['detections']
             if dets:
                 for det in dets:
-                    # Only paint boxes that were also individually ON
                     if det.get('label') == 'ON':
                         x1, y1, x2, y2 = det['bbox']
-                        boxes.append((x1, y1, x2, y2,
-                                      det.get('confidence', 1.0)))
-                # If rate gate fired ON but no individual box is ON yet,
-                # paint the dominant bbox from the scene dict
-                if not boxes and result.get('bbox'):
+                        conf = det.get('confidence', 1.0)
+                        roi = frame[y1:y2, x1:x2]
+                        
+                        hm = None
+                        if hasattr(pipeline, 'classifier'):
+                            hm = get_gradcam(roi, pipeline.classifier, 'clf')
+                        elif hasattr(pipeline, 'yolo_classifier'):
+                            hm = get_gradcam(roi, pipeline.yolo_classifier, 'yolo_clf')
+                            
+                        regions.append((x1, y1, x2, y2, conf, hm))
+                
+                if not regions and result.get('bbox'):
                     x1, y1, x2, y2 = result['bbox']
-                    boxes.append((x1, y1, x2, y2,
-                                  result.get('confidence', 1.0)))
+                    conf = result.get('confidence', 1.0)
+                    roi = frame[y1:y2, x1:x2]
+                    regions.append((x1, y1, x2, y2, conf, get_gradcam(roi)))
 
     # ── Pipelines 2 & 3: single label dict ──────────────────────────────────
     elif isinstance(result, dict):
@@ -197,19 +226,32 @@ def extract_active_boxes(pipeline, result, frame_shape) -> list:
             conf = result.get('confidence', result.get('yolo_conf', 1.0))
             bbox = result.get('bbox')
             if bbox and len(bbox) == 4:
-                boxes.append((*bbox, conf))
+                x1, y1, x2, y2 = bbox
+                roi = frame[y1:y2, x1:x2]
+                
+                hm = None
+                if hasattr(pipeline, 'classifier'):
+                    hm = get_gradcam(roi, pipeline.classifier, 'clf')
+                elif hasattr(pipeline, 'yolo_classifier'):
+                    hm = get_gradcam(roi, pipeline.yolo_classifier, 'yolo_clf')
+                
+                regions.append((x1, y1, x2, y2, conf, hm))
             else:
-                # Pipeline 3 has no fixed bbox – paint full frame
-                boxes.append((0, 0, W, H, conf))
+                # Pipeline 3 / Full frame YOLO
+                hm = None
+                if hasattr(pipeline, 'yolo_classifier'):
+                    hm = get_gradcam(frame, pipeline.yolo_classifier, 'yolo_clf')
+                regions.append((0, 0, W, H, conf, hm))
 
     # ── Pipeline 1 old / list format (backward compat) ──────────────────────
     elif isinstance(result, list):
         for det in result:
             if det.get('label') == 'ON':
                 x1, y1, x2, y2 = det['bbox']
-                boxes.append((x1, y1, x2, y2, det.get('confidence', 1.0)))
+                roi = frame[y1:y2, x1:x2]
+                regions.append((x1, y1, x2, y2, det.get('confidence', 1.0), get_gradcam(roi)))
 
-    return boxes
+    return regions
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,12 +348,15 @@ def run(args):
             # ── run pipeline ────────────────────────────────────────────────
             annotated, result = pipeline.process_frame(frame)
 
-            # ── extract active boxes & accumulate ───────────────────────────
-            boxes = extract_active_boxes(pipeline, result, frame.shape)
-            if boxes:
+            # ── extract active regions & accumulate ──────────────────────────
+            regions = extract_active_regions(pipeline, result, frame)
+            if regions:
                 on_frames += 1
-                for (x1, y1, x2, y2, conf) in boxes:
-                    accumulate(heatmap, x1, y1, x2, y2, weight=float(conf))
+                for i, (x1, y1, x2, y2, conf, local_hm) in enumerate(regions):
+                    if local_hm is not None:
+                        if frame_n % 30 == 0:
+                            print(f"  [DEBUG] Applying Grad-CAM for region {i} (conf: {conf:.2f})")
+                    accumulate(heatmap, x1, y1, x2, y2, weight=float(conf), local_hm=local_hm)
 
             # ── render heatmap panel ────────────────────────────────────────
             heatmap_vis = render_heatmap(frame, heatmap, on_frames)

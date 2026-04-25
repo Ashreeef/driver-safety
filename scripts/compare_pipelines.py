@@ -92,9 +92,9 @@ def run_comparison(video_path, yolo_v5, yolo_v8, cnn_weights, config_path, outpu
         return
         
     # Preparation for output
-    grid_w, grid_h = 900, 1000 
+    grid_w, grid_h = 1200, 700 
    
-    cell_w, cell_h = 300, 500
+    cell_w, cell_h = 400, 350
     
     writer = None
     if output_path:
@@ -123,7 +123,7 @@ def run_comparison(video_path, yolo_v5, yolo_v8, cnn_weights, config_path, outpu
             # Actually, let's just use 5. 
             if len(annotated_frames) < 6:
                 black_frame = np.zeros_like(annotated_frames[0])
-                cv2.putText(black_frame, "BSBS MEOW", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+                cv2.putText(black_frame, "Nothing to see here", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
                 annotated_frames.append(black_frame)
                 titles.append("Info")
 
