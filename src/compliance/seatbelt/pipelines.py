@@ -340,7 +340,8 @@ class Pipeline2(BaseSeatbeltPipeline):
     """
 
     def __init__(self, yolo_path: str, classifier_path: str,
-                 device: str = 'cpu', config: Optional[Dict] = None):
+                 device: str = 'cpu', config: Optional[Dict] = None,
+                 model_paths: Optional[Dict] = None):
         self.config = config or {}
         self.device = device
 
@@ -351,7 +352,9 @@ class Pipeline2(BaseSeatbeltPipeline):
         fus_cfg  = self.config.get('fusion', {})
         self.viz_cfg = self.config.get('visualization', {})
 
-        self.roi_extractor = ROIExtractor(method='mediapipe', config=roi_cfg)
+        pose_path = (model_paths or {}).get('mediapipe', {}).get('pose_landmarker')
+        self.roi_extractor = ROIExtractor(
+            method='mediapipe', model_path=pose_path, config=roi_cfg)
         self.yolo          = YOLO(yolo_path)
         self.classifier    = SeatbeltClassifier(
             classifier_path, device=device, config=clf_cfg)

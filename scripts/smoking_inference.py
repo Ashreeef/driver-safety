@@ -42,11 +42,16 @@ def draw_hud(frame, res, frame_idx, fusion_score, temporal_conf):
     
     return out
 
-def run_smoking_inference(video_path, sm_weights, config_path, output_path=None, show=False):
+def run_smoking_inference(video_path, sm_weights, config_path, mp_paths_path, output_path=None, show=False):
     config = load_config(config_path)
-    
-    print("  Loading Smoking Subsystem...")
-    extractor = LandmarkExtractor(config.get('landmarks', {}))
+    mp_paths = load_config(mp_paths_path).get('mediapipe', {})
+
+    print("  Loading Smoking Subsystem (standalone mode — internal face detector)...")
+    extractor = LandmarkExtractor(
+        config.get('landmarks', {}),
+        model_paths=mp_paths,
+        use_external_face_landmarks=False,
+    )
     detector = SmokingDetector(config, extractor, sm_weights)
     
     cap = cv2.VideoCapture(video_path)
@@ -124,6 +129,10 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="Path to save output video")
     parser.add_argument("--show", action="store_true", help="Show live preview")
     
+    parser.add_argument("--model-paths", type=str, default="configs/model_paths.yaml",
+                        help="Path to model_paths.yaml")
+
     args = parser.parse_args()
-    
-    run_smoking_inference(args.video, args.weights, args.config, args.output, args.show)
+
+    run_smoking_inference(args.video, args.weights, args.config, args.model_paths,
+                          args.output, args.show)

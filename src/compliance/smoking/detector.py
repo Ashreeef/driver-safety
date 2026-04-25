@@ -35,7 +35,9 @@ class SmokingDetector:
 
         if yolo_weights and os.path.exists(yolo_weights):
             try:
-                self.yolo = YOLO(yolo_weights)
+                # Pass task='detect' explicitly for ONNX models — ultralytics
+                # cannot infer the task from the ONNX metadata automatically.
+                self.yolo = YOLO(yolo_weights, task='detect')
                 print(f"  ✅ Smoking YOLO loaded from {yolo_weights}")
             except Exception as e:
                 print(f"  ⚠  Failed to load smoking YOLO: {e}")
@@ -53,11 +55,12 @@ class SmokingDetector:
         self._prev_wrist = None
         self.frame_count = 0
 
-    def _landmark_score(self, bgr: np.ndarray) -> Tuple[float, Optional[Dict]]:
+    def _landmark_score(self, bgr: np.ndarray,
+                        face_landmarks=None) -> Tuple[float, Optional[Dict]]:
         if not self.extractor:
             return 0.0, None
-        
-        lm = self.extractor.extract(bgr)
+
+        lm = self.extractor.extract(bgr, face_landmarks=face_landmarks)
         if lm is None:
             return 0.0, None
         
@@ -112,8 +115,16 @@ class SmokingDetector:
             
         return best_conf, detections
 
-    def process(self, bgr: np.ndarray) -> SmokingFrameResult:
-        s_L, lm = self._landmark_score(bgr)
+    def process(self, bgr: np.ndarray,
+                face_landmarks=None) -> SmokingFrameResult:
+        """
+        Args:
+            bgr:            Current frame in BGR.
+            face_landmarks: result_dict['landmarks'] — shape (478, 3), normalised.
+                            Pass this from the main pipeline to avoid re-running
+                            face detection inside the smoking module.
+        """
+        s_L, lm = self._landmark_score(bgr, face_landmarks=face_landmarks)
         s_D, dets = self._detection_score(bgr)
         
         # Fusion
