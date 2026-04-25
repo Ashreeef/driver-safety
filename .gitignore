@@ -4,11 +4,9 @@ data/
 # Model weights
 models/
 test_input/
-*.pt
 *.pth
 *.tflite
 *.task
-*.onnx
 *.pb
 
 # Python
