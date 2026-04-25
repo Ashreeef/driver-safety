@@ -1,0 +1,9 @@
+# Phone detection configuration
+
+detection:
+  conf_threshold: 0.25
+  device: "cpu"
+
+visualization:
+  # If true, non-phone context objects are drawn as faint gray boxes.
+  show_driver_context: true

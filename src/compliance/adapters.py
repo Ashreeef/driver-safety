@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.compliance.smoking.detector import SmokingFrameResult
+    from src.compliance.phone import PhoneFrameResult
 
 
 def seatbelt_to_result(scene_dict: dict, result_dict: dict) -> dict:
@@ -42,4 +43,15 @@ def smoking_to_result(sm_res: SmokingFrameResult, result_dict: dict) -> dict:
     result_dict['smoking_proximity_sec'] = float(sm_res.temporal_conf)
     result_dict['smoking_hand_visible']  = 'right_wrist' in lm
     result_dict['smoking_wrist_ok']      = True
+    return result_dict
+
+
+def phone_to_result(ph_res: PhoneFrameResult, result_dict: dict) -> dict:
+    """
+    Bridge PhoneFrameResult → result_dict.
+
+    Mapping:
+      alert_triggered → phone_detected
+    """
+    result_dict['phone_detected'] = ph_res.alert_triggered
     return result_dict

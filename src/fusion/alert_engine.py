@@ -33,6 +33,7 @@ class AlertEngine:
         'Distraction (Gaze)':        2,
         'Seatbelt OFF':              2,
         'Smoking detected':          2,
+        'Phone detected':            2,
     }
 
     # Don't alert seatbelt-off during pipeline warmup
@@ -50,6 +51,8 @@ class AlertEngine:
             raw.append('Seatbelt OFF')
         if result_dict.get('smoking_detected', False):
             raw.append('Smoking detected')
+        if result_dict.get('phone_detected', False):
+            raw.append('Phone detected')
 
         # ── Cross-module escalation ───────────────────────────────────────────
         active_fatigue = set(raw) & self._FATIGUE_ESCALATION

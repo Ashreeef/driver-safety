@@ -20,5 +20,3 @@ albumentations==1.4.3
 gitpython>=3.1.30
 requests>=2.32.2
 urllib3>=2.6.0
-memory_profiler
-psutil
