@@ -1,0 +1,75 @@
+# Seatbelt Detection Configuration File
+
+roi:
+  # MediaPipe Pose Landmarker Settings
+  min_pose_presence_confidence: 0.5
+  min_pose_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  torso_indices: [11, 12, 23, 24]
+  padding: 0.2
+  
+  # YOLO ROI Settings
+  yolo_conf_thresh: 0.50
+
+classifier:
+  input_size: [96, 96]
+  normalization_mean: [0.485, 0.456, 0.406]
+  normalization_std: [0.229, 0.224, 0.225]
+  patch_conf_threshold: 0.65
+
+geometric:
+  n_iter: 30
+  dist_thresh: 4.0
+  min_inliers: 15
+  slope_tolerance: 0.5
+  expected_slope: -1.0
+  canny_t1: 50
+  canny_t2: 150
+
+smoothers:
+  ema:
+    alpha: 0.35
+    threshold: 0.52
+    min_frames: 6
+  majority:
+    window_size: 5
+  bilstm:
+    sequence_len: 16
+
+fusion:
+  cnn_weight: 0.2
+  yolo_weight: 0.8
+  agreement_threshold: 0.75
+
+# ── Rolling ON/OFF Rate Gate ───────────────────────────────────────────────
+# Fires an authoritative prediction when the fraction of ON (or OFF) frames
+# in the last `window_size` frames crosses the threshold.
+#
+#   on_threshold  – if ON  rate ≥ this value → force label = ON
+#   off_threshold – if OFF rate ≥ this value → force label = OFF
+#
+# Set enabled: false to disable (pipelines fall through to smoother output).
+rate_gate:
+  enabled:       false
+  window_size:   30      # number of recent frames tracked
+  on_threshold:  0.80    # 60 % of window must be ON  to fire
+  off_threshold: 0.90    # 60 % of window must be OFF to fire
+
+visualization:
+  colors:
+    'ON': [0, 200, 0]
+    'OFF': [0, 0, 220]
+    'WARMING': [160, 160, 160]
+  overlay_alpha: 0.6
+  banner_alpha: 0.7
+  banner_height: 50
+  font_scale: 0.9
+  font_thickness: 2
+  display_width: 1280
+  display_height: 720
+
+pipelines:
+  pipeline1:
+    classifier_type: "yolo" # "cnn" or "yolo"
+  pipeline3:
+    smoother_type: "ema" # "ema" or "majority"
