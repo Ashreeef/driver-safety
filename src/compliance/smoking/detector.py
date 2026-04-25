@@ -35,7 +35,9 @@ class SmokingDetector:
 
         if yolo_weights and os.path.exists(yolo_weights):
             try:
-                self.yolo = YOLO(yolo_weights)
+                # Pass task='detect' explicitly for ONNX models — ultralytics
+                # cannot infer the task from the ONNX metadata automatically.
+                self.yolo = YOLO(yolo_weights, task='detect')
                 print(f"  ✅ Smoking YOLO loaded from {yolo_weights}")
             except Exception as e:
                 print(f"  ⚠  Failed to load smoking YOLO: {e}")

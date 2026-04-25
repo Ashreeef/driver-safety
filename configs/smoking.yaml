@@ -1,14 +1,11 @@
 # Smoking Detection Configuration File
 
 detection:
-  # YOLO cigarette detector settings
+  # YOLO smoking detector settings (weights/v1/best.onnx — YOLOv8 ONNX)
   conf_thresh: 0.45
   iou_thresh: 0.45
   classes:
-    0: "cigarette"
-    1: "cigarette_at_mouth"
-    2: "hand_holding_cigarette"
-    3: "smoke_plume"
+    0: "smoking"    # model outputs 'Smooking' but we normalise the label here
 
 landmarks:
   # MediaPipe HandLandmarker Settings
