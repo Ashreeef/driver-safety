@@ -33,6 +33,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# AI Context and Memory
+.ai_context/
+
 # IDE
 .vscode/
 .idea/
