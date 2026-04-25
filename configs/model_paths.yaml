@@ -16,3 +16,7 @@ seatbelt:
 smoking:
   # YOLOv8 ONNX cigarette/smoking detector (class 0: 'Smooking')
   yolo: "weights/v1/smoking_yolov8.onnx"
+
+phone:
+  # YOLOv8 phone detector weights
+  yolo: "weights/v1/yolov8n_phone.pt"

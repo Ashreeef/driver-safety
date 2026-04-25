@@ -8,6 +8,7 @@ Real-time driver monitoring using a single in-vehicle camera on Raspberry Pi 4.
 - **Geometric Fatigue**: EAR / MAR / PERCLOS computation.
 - **Seatbelt Detection**: Core pipelines migrated and modularized.
 - **Smoking Detection (New)**: Hybrid landmark/YOLO fusion engine.
+- **Phone Detection (New)**: YOLO-based phone compliance detection with video event analysis.
 - **Unified Safety Monitor (New)**: Integrated real-time monitoring of multiple hazards.
 
 ---
@@ -55,6 +56,35 @@ weights/
 ## 🚀 Running Inference
 
 The project provides three primary inference scripts located in the `scripts/` directory. All scripts support real-time preview using the `--show` flag.
+
+### 0. Phone Detection (Standalone)
+Run phone-use detection on images or videos.
+
+```bash
+# Video inference with output
+python scripts/phone_inference.py --video "data/test_video.mp4" \
+    --weights "weights/v1/yolov8n_phone.pt" \
+    --config "configs/phone.yaml" \
+    --output "outputs/phone_output.mp4"
+
+# Save per-frame event analysis JSON artifacts
+python scripts/phone_inference.py --video "data/test_video.mp4" \
+    --weights "weights/v1/yolov8n_phone.pt" \
+    --save-analysis
+```
+
+Training utilities migrated from notebook flow:
+
+```bash
+# Prepare dataset (uses ROBOFLOW_API_KEY from .env)
+python scripts/phone_train.py prepare --mode phone_only --dataset-version 1
+
+# Train detector
+python scripts/phone_train.py train --data dataset_phone/data.yaml
+
+# Evaluate detector
+python scripts/phone_train.py eval --weights runs/phone_detection/yolov8n_phone_v2/weights/best.pt --split test
+```
 
 ### 1. Unified Safety Monitor (Production)
 The primary entry point that runs **Smoking** and **Seatbelt** detection simultaneously.
