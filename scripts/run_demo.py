@@ -14,24 +14,7 @@ from src.fatigue.mar import MARTracker
 from src.fatigue.perclos import PERCLOSTracker
 from src.gaze.gaze_estimator import GazeEstimator
 from src.compliance.adapters import seatbelt_to_result, smoking_to_result
-
-
-# ── Audio alert helper ────────────────────────────────────────────────────────
-
-def _play_alert_sound():
-    if sys.platform == 'win32':
-        import winsound
-        winsound.Beep(1000, 350)
-    else:
-        os.system('aplay /usr/share/sounds/alsa/Front_Left.wav 2>/dev/null || beep 2>/dev/null || true')
-
-
-def trigger_audio(alerts, prev_alerts, audio_enabled):
-    if not audio_enabled:
-        return
-    if set(alerts) - set(prev_alerts):
-        t = threading.Thread(target=_play_alert_sound, daemon=True)
-        t.start()
+from src.fusion.alert_engine import AlertEngine
 
 
 # ── Compliance worker (runs in its own daemon thread) ─────────────────────────
@@ -262,8 +245,7 @@ def main():
                                  real_fps, (w, h))
         print(f"Recording annotated output → {args.output}")
 
-    audio_enabled = thresholds.get('alerts_audio', True)
-    prev_alerts: list = []
+    alert_engine = AlertEngine()
 
     print("Press 'q' to quit  |  'r' to reset gaze calibration.")
 
@@ -281,10 +263,11 @@ def main():
 
         # ── Compliance (async results from worker thread) ─────────────────────
         if compliance_worker is not None:
-            # Push latest frame + landmarks so worker can start next iteration
             compliance_worker.push(frame, result.get('landmarks'))
-            # Merge most recently completed compliance result
             result = compliance_worker.merge(result)
+
+        # ── Alert engine — escalation, compliance alerts, priority sort ────────
+        result = alert_engine.process(result)
 
         # ── Overlay ───────────────────────────────────────────────────────────
         h, w = frame.shape[:2]
@@ -395,10 +378,6 @@ def main():
             put("NO FACE / ANGLE EXCEEDED", color=(0, 0, 255), bold=True)
             put(f"Pitch:{result['pitch']:.0f}  Yaw:{result['yaw']:.0f}",
                 color=(0, 140, 255))
-
-        alerts = result.get('alerts', [])
-        trigger_audio(alerts, prev_alerts, audio_enabled)
-        prev_alerts = list(alerts)
 
         if writer is not None:
             writer.write(frame)
