@@ -13,7 +13,7 @@ from src.fatigue.ear import EARCalibrator, EARTracker
 from src.fatigue.mar import MARTracker
 from src.fatigue.perclos import PERCLOSTracker
 from src.gaze.gaze_estimator import GazeEstimator
-from src.compliance.adapters import seatbelt_to_result, smoking_to_result
+from src.compliance.adapters import seatbelt_to_result, smoking_to_result, phone_to_result
 from src.fusion.alert_engine import AlertEngine
 
 
@@ -34,11 +34,13 @@ class ComplianceWorker:
         'smoking_proximity_sec':  0.0,
         'smoking_hand_visible':   False,
         'smoking_wrist_ok':       True,
+        'phone_detected':         False,
     }
 
-    def __init__(self, seatbelt_pipeline=None, smoking_detector=None):
+    def __init__(self, seatbelt_pipeline=None, smoking_detector=None, phone_detector=None):
         self._sb     = seatbelt_pipeline
         self._sm     = smoking_detector
+        self._ph     = phone_detector
         self._lock   = threading.Lock()
         self._frame  = None
         self._face_lm = None
@@ -94,6 +96,13 @@ class ComplianceWorker:
                 except Exception as exc:
                     print(f"[ComplianceWorker] smoking error: {exc}")
 
+            if self._ph is not None:
+                try:
+                    ph_res = self._ph.detect(frame)
+                    phone_to_result(ph_res, update)
+                except Exception as exc:
+                    print(f"[ComplianceWorker] phone error: {exc}")
+
             if update:
                 with self._lock:
                     self._latest.update(update)
@@ -111,15 +120,17 @@ def load_configs():
 
 def _try_load_compliance(args, paths, thresholds):
     """
-    Attempt to load seatbelt and smoking modules.  Returns (pipeline, smoking)
-    where either may be None if weights are missing or loading fails.
+    Attempt to load seatbelt, smoking, and phone modules.
+    Returns (pipeline, smoking_det, phone_det) — any may be None.
     """
     mp_paths = paths.get('mediapipe', {})
     sb_paths = paths.get('seatbelt', {})
     sm_paths = paths.get('smoking', {})
+    ph_paths = paths.get('phone', {})
 
-    pipeline   = None
+    pipeline    = None
     smoking_det = None
+    phone_det   = None
 
     # ── Seatbelt ─────────────────────────────────────────────────────────────
     if not args.no_compliance:
@@ -186,7 +197,31 @@ def _try_load_compliance(args, paths, thresholds):
             except Exception as exc:
                 print(f"[run_demo] Smoking load failed: {exc}")
 
-    return pipeline, smoking_det
+    # ── Phone ─────────────────────────────────────────────────────────────────
+    if not args.no_compliance and not args.no_phone:
+        ph_yolo = ph_paths.get('yolo', '')
+        if not os.path.exists(ph_yolo):
+            print(f"[run_demo] Phone weights not found — phone detection disabled.")
+            print(f"  yolo: {ph_yolo}")
+        else:
+            try:
+                with open('configs/phone.yaml') as _f:
+                    ph_cfg = yaml.safe_load(_f)
+                from src.compliance.phone import PhoneDetector
+                det_cfg = ph_cfg.get('detection', {})
+                phone_det = PhoneDetector(
+                    model_path=ph_yolo,
+                    conf_threshold=float(det_cfg.get('conf_threshold', 0.25)),
+                    device=str(det_cfg.get('device', 'cpu')),
+                    show_driver_context=bool(
+                        ph_cfg.get('visualization', {}).get('show_driver_context', True)
+                    ),
+                )
+                print("[run_demo] Phone detector loaded.")
+            except Exception as exc:
+                print(f"[run_demo] Phone load failed: {exc}")
+
+    return pipeline, smoking_det, phone_det
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -201,6 +236,8 @@ def main():
                         help='Disable all compliance modules (seatbelt + smoking)')
     parser.add_argument('--no-smoking', action='store_true',
                         help='Disable smoking detection only')
+    parser.add_argument('--no-phone', action='store_true',
+                        help='Disable phone detection only')
     parser.add_argument('--seatbelt-pipeline', choices=['1', '2', '3'], default='2',
                         help='Seatbelt pipeline: 1=YOLO+CNN, 2=Pose+YOLO+CNN+EMA (default), 3=Direct YOLO')
     args = parser.parse_args()
@@ -217,10 +254,10 @@ def main():
     gaze        = GazeEstimator(thresholds)
 
     # ── Compliance (optional) ─────────────────────────────────────────────────
-    sb_pipeline, sm_detector = _try_load_compliance(args, paths, thresholds)
+    sb_pipeline, sm_detector, ph_detector = _try_load_compliance(args, paths, thresholds)
     compliance_worker = None
-    if sb_pipeline is not None or sm_detector is not None:
-        compliance_worker = ComplianceWorker(sb_pipeline, sm_detector)
+    if sb_pipeline is not None or sm_detector is not None or ph_detector is not None:
+        compliance_worker = ComplianceWorker(sb_pipeline, sm_detector, ph_detector)
         compliance_worker.start()
         print("[run_demo] Compliance worker thread started.")
 
@@ -363,10 +400,14 @@ def main():
                 put("-" * 16, color=(70, 70, 70))
                 sb_ok = result.get('seatbelt_detected', False)
                 sm_on = result.get('smoking_detected', False)
+                ph_on = result.get('phone_detected', False)
                 put(f"Seatbelt  {'ON' if sb_ok else 'OFF'}",
                     color=(100, 220, 100) if sb_ok else (0, 80, 255))
                 put(f"Smoking   {'YES' if sm_on else 'clear'}",
                     color=(0, 0, 255) if sm_on else (100, 220, 100))
+                if ph_detector is not None:
+                    put(f"Phone     {'YES' if ph_on else 'clear'}",
+                        color=(0, 0, 255) if ph_on else (100, 220, 100))
 
             alerts = result.get('alerts', [])
             if alerts:

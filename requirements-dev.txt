@@ -5,3 +5,9 @@ pytest==8.1.1
 pytest-cov==5.0.0
 jupyter==1.0.0
 ipykernel==6.29.4
+
+# Training utilities (laptop/cloud only — do NOT install on RPi)
+python-dotenv>=1.0.1
+roboflow>=1.1.30
+memory_profiler
+psutil
