@@ -3,6 +3,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
+import threading
 import cv2
 import yaml
 from src.face_mesh.mediapipe_pipeline import FaceMeshDetector
@@ -10,6 +11,24 @@ from src.fatigue.ear import EARCalibrator, EARTracker
 from src.fatigue.mar import MARTracker
 from src.fatigue.perclos import PERCLOSTracker
 from src.gaze.gaze_estimator import GazeEstimator
+
+
+def _play_alert_sound():
+    """Fire a short beep in a daemon thread — non-blocking."""
+    if sys.platform == 'win32':
+        import winsound
+        winsound.Beep(1000, 350)
+    else:
+        os.system('aplay /usr/share/sounds/alsa/Front_Left.wav 2>/dev/null || beep 2>/dev/null || true')
+
+
+def trigger_audio(alerts, prev_alerts, audio_enabled):
+    """Beep once whenever the active alert set gains a new entry."""
+    if not audio_enabled:
+        return
+    if set(alerts) - set(prev_alerts):
+        t = threading.Thread(target=_play_alert_sound, daemon=True)
+        t.start()
 
 def load_configs():
     with open('configs/thresholds.yaml') as f:
@@ -22,6 +41,8 @@ def main():
     parser = argparse.ArgumentParser(description='Driver fatigue detection demo')
     parser.add_argument('--source', default=None,
                         help='Video source: camera index (0, 1, …) or path to video file')
+    parser.add_argument('--output', default=None,
+                        help='Path for annotated output video (e.g. out.mp4). Omit to disable.')
     args = parser.parse_args()
 
     thresholds, paths = load_configs()
@@ -46,6 +67,19 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
     cap.set(cv2.CAP_PROP_FPS,          fps)
+
+    # Output video writer (None when --output not specified)
+    writer = None
+    if args.output:
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        real_fps = cap.get(cv2.CAP_PROP_FPS) or fps
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(args.output, fourcc, real_fps, (w, h))
+        print(f"Recording annotated output → {args.output}")
+
+    audio_enabled = thresholds.get('alerts_audio', True)
+    prev_alerts: list = []
 
     print("Press 'q' to quit  |  'r' to reset gaze calibration.")
     while cap.isOpened():
@@ -171,6 +205,13 @@ def main():
             put("NO FACE / ANGLE EXCEEDED", color=(0, 0, 255), bold=True)
             put(f"Pitch:{result['pitch']:.0f}  Yaw:{result['yaw']:.0f}", color=(0, 140, 255))
 
+        alerts = result.get('alerts', [])
+        trigger_audio(alerts, prev_alerts, audio_enabled)
+        prev_alerts = list(alerts)
+
+        if writer is not None:
+            writer.write(frame)
+
         cv2.imshow('Fatigue Detection', frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
@@ -180,6 +221,9 @@ def main():
             print("[run_demo] Gaze calibration reset.")
 
     cap.release()
+    if writer is not None:
+        writer.release()
+        print(f"Saved annotated video → {args.output}")
     cv2.destroyAllWindows()
     face_mesh.close()
 
