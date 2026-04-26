@@ -329,14 +329,102 @@ def print_report(stopwatches: dict, compliance_worker, total_frames: int,
         print(f"[evaluate] Report saved → {output_path}")
 
 
+# ── Overlay drawing ──────────────────────────────────────────────────────────
+
+def _draw_overlay(frame: np.ndarray, result: dict, sw: dict,
+                  live_fps: float, measured: int, total: int) -> np.ndarray:
+    h, w = frame.shape[:2]
+    panel_w = 260
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (panel_w, h), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+    y    = 26
+    step = 22
+
+    def put(text, color=(185, 210, 185), scale=0.52, bold=False):
+        nonlocal y
+        cv2.putText(frame, text, (8, y), cv2.FONT_HERSHEY_SIMPLEX,
+                    scale, color, 2 if bold else 1, cv2.LINE_AA)
+        y += step
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    fps_color = (80, 220, 80) if live_fps >= 15 else (60, 80, 220)
+    put("EVALUATE MODE", color=(100, 200, 255), scale=0.58, bold=True)
+    put(f"FPS {live_fps:5.1f}  frame {measured}" +
+        (f"/{total}" if total > 0 else ""),
+        color=fps_color)
+    put("-" * 20, color=(60, 60, 60))
+
+    # ── Face / fatigue metrics ─────────────────────────────────────────────────
+    valid = result.get('valid', False)
+    if valid:
+        ear_val  = result.get('ear')
+        mar_val  = result.get('mar')
+        pcl_val  = result.get('perclos')
+        gaze_dir = result.get('gaze_direction') or '?'
+        cal      = result.get('ear_calibrated', False)
+        bl       = result.get('ear_baseline')
+
+        ear_str = f"EAR {ear_val:.3f}" if ear_val is not None else "EAR ---"
+        mar_str = f"MAR {mar_val:.3f}" if mar_val is not None else "MAR ---"
+        pcl_str = (f"PERCLOS {pcl_val:.2f}" if pcl_val is not None else "PERCLOS buf...")
+        cal_str = (f"BL={bl:.3f}" if (cal and bl) else
+                   f"CAL {result.get('ear_calibrated', 0)*100:.0f}%")
+
+        put(ear_str + f"  {cal_str}", color=(170, 220, 170))
+        put(mar_str, color=(170, 220, 170))
+        put(pcl_str, color=(170, 220, 170))
+        put(f"Gaze {gaze_dir}", color=(170, 220, 170))
+    else:
+        put("No face detected", color=(100, 100, 200))
+        y += step * 3
+
+    # ── Compliance ─────────────────────────────────────────────────────────────
+    put("-" * 20, color=(60, 60, 60))
+    sb  = result.get('seatbelt_detected', False)
+    sm  = result.get('smoking_detected',  False)
+    ph  = result.get('phone_detected',    False)
+    put(f"Seatbelt {'OK' if sb else 'OFF'}",
+        color=(80, 200, 80) if sb else (60, 60, 220))
+    put(f"Smoking  {'YES' if sm else 'clear'}",
+        color=(60, 60, 220) if sm else (130, 160, 130))
+    put(f"Phone    {'YES' if ph else 'clear'}",
+        color=(60, 60, 220) if ph else (130, 160, 130))
+
+    # ── Alerts ────────────────────────────────────────────────────────────────
+    alerts = result.get('alerts', [])
+    if alerts:
+        put("-" * 20, color=(60, 60, 60))
+        for alert in alerts[:4]:
+            is_crit = 'CRITICAL' in alert
+            put(f"! {alert}", color=(40, 40, 230) if is_crit else (60, 130, 230),
+                scale=0.50, bold=is_crit)
+
+    # ── Per-module timing strip at bottom ────────────────────────────────────
+    strip_y = h - 14
+    labels  = [('FM', 'face_mesh'), ('EAR', 'ear'), ('MAR', 'mar'),
+               ('PCL', 'perclos'), ('Gaze', 'gaze')]
+    x_cur   = 6
+    for label, key in labels:
+        s = sw[key].stats()
+        ms_str = f"{s['mean']:.0f}ms" if s else "--"
+        txt = f"{label}:{ms_str}"
+        cv2.putText(frame, txt, (x_cur, strip_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (160, 160, 160), 1, cv2.LINE_AA)
+        x_cur += len(txt) * 7 + 4
+
+    return frame
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description='Per-component latency benchmark')
     parser.add_argument('--source', default=None,
-                        help='Camera index or video file path')
+                        help='Camera index or video file path (e.g. video.mp4)')
     parser.add_argument('--frames', type=int, default=0,
-                        help='Stop after N frames (0 = run until q or end of video)')
+                        help='Stop after N frames (0 = run until q or end of file)')
     parser.add_argument('--no-compliance', action='store_true',
                         help='Skip all compliance modules')
     parser.add_argument('--no-smoking', action='store_true',
@@ -346,6 +434,10 @@ def main():
     parser.add_argument('--seatbelt-pipeline', choices=['1', '2', '3'], default='2')
     parser.add_argument('--output', default=None,
                         help='Save text report to this file')
+    parser.add_argument('--save-video', default=None, metavar='PATH',
+                        help='Save annotated output video (e.g. out.mp4)')
+    parser.add_argument('--no-display', action='store_true',
+                        help='Disable the live preview window (useful for headless runs)')
     parser.add_argument('--warmup', type=int, default=30,
                         help='Frames to skip before recording (default 30)')
     args = parser.parse_args()
@@ -369,17 +461,47 @@ def main():
         compliance_worker.start()
         print("[evaluate] Compliance worker thread started.")
 
-    # ── Camera setup ──────────────────────────────────────────────────────────
+    # ── Camera / video setup ──────────────────────────────────────────────────
+    is_video_file = False
     if args.source is not None:
         raw = args.source
-        source = int(raw) if raw.isdigit() else raw
+        if raw.isdigit():
+            source = int(raw)
+        else:
+            source = raw
+            is_video_file = os.path.isfile(raw)
     else:
         source = thresholds.get('camera_source', 0)
 
     cap = cv2.VideoCapture(source)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
-    cap.set(cv2.CAP_PROP_FPS, fps_cfg)
+    if not cap.isOpened():
+        print(f"[evaluate] ERROR: cannot open source '{source}'")
+        return
+
+    # For video files use native resolution; for live camera force config values
+    if is_video_file:
+        vid_w  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        vid_h  = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        vid_fps = cap.get(cv2.CAP_PROP_FPS) or fps_cfg
+        total_vid_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        print(f"[evaluate] Video: {vid_w}x{vid_h} @ {vid_fps:.1f}fps  ({total_vid_frames} frames)")
+    else:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
+        cap.set(cv2.CAP_PROP_FPS, fps_cfg)
+        vid_w  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        vid_h  = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        vid_fps = fps_cfg
+        total_vid_frames = 0
+
+    # ── Optional video writer ─────────────────────────────────────────────────
+    writer = None
+    if args.save_video:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(args.save_video, fourcc, vid_fps, (vid_w, vid_h))
+        print(f"[evaluate] Saving annotated video → {args.save_video}")
+
+    show = not args.no_display
 
     # ── Stopwatches ───────────────────────────────────────────────────────────
     sw = {k: Stopwatch(k) for k in ['face_mesh', 'ear', 'mar', 'perclos', 'gaze', 'alert_engine']}
@@ -401,7 +523,6 @@ def main():
 
             if frame_count <= args.warmup:
                 print(f"\r  Warming up... {frame_count}/{args.warmup}", end='', flush=True)
-                # Still process normally during warmup so modules initialise
                 result = face_mesh.process_frame(frame)
                 result = ear_tracker.update(result)
                 result = mar_tracker.update(result)
@@ -411,6 +532,15 @@ def main():
                     compliance_worker.push(frame, result.get('landmarks'))
                     compliance_worker.merge(result)
                 alert_engine.process(result)
+
+                if show:
+                    wu_frame = frame.copy()
+                    cv2.putText(wu_frame, f"Warming up... {frame_count}/{args.warmup}",
+                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (100, 200, 255), 2, cv2.LINE_AA)
+                    cv2.imshow('evaluate — driver monitor', wu_frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
 
                 if frame_count == args.warmup:
                     print(f"\r  Warmup done. Recording timing now...          ")
@@ -447,30 +577,47 @@ def main():
             alert_engine.process(result)
             sw['alert_engine'].record((time.perf_counter() - t0) * 1000)
 
-            # ── Live HUD ──────────────────────────────────────────────────────
+            # ── Timing stats ──────────────────────────────────────────────────
             measured = frame_count - args.warmup
             elapsed  = time.perf_counter() - wall_start
             live_fps = measured / elapsed if elapsed > 0 else 0
 
+            # ── Overlay (for display and/or video save) ───────────────────────
+            if show or writer is not None:
+                frame = _draw_overlay(frame, result, sw, live_fps,
+                                      measured, total_vid_frames - args.warmup)
+
+            if writer is not None:
+                writer.write(frame)
+
+            if show:
+                cv2.imshow('evaluate — driver monitor', frame)
+
+            # ── Terminal status line ──────────────────────────────────────────
             fm_ms  = sw['face_mesh'].stats()
             fm_str = f"{fm_ms['mean']:.1f}ms" if fm_ms else "---"
-
+            pct    = f" ({measured*100//(total_vid_frames-args.warmup)}%)" \
+                     if total_vid_frames > args.warmup else ""
             status = (
-                f"  Frame {measured:>5}  |  FPS {live_fps:5.1f}  |  "
-                f"FaceMesh {fm_str}  |  press q to stop"
+                f"  Frame {measured:>5}{pct}  |  FPS {live_fps:5.1f}  |  "
+                f"FaceMesh {fm_str}  |  q=quit"
             )
             print(f"\r{status}", end='', flush=True)
 
             if args.frames > 0 and measured >= args.frames:
                 break
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
                 break
 
     except KeyboardInterrupt:
         print("\n[evaluate] Interrupted.")
     finally:
         cap.release()
+        if writer is not None:
+            writer.release()
+            print(f"\n[evaluate] Annotated video saved → {args.save_video}")
         cv2.destroyAllWindows()
         if compliance_worker is not None:
             compliance_worker.stop()
