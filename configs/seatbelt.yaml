@@ -9,7 +9,7 @@ roi:
   padding: 0.2
   
   # YOLO ROI Settings
-  yolo_conf_thresh: 0.50
+  yolo_conf_thresh: 0.30
 
 classifier:
   input_size: [96, 96]
@@ -28,8 +28,8 @@ geometric:
 
 smoothers:
   ema:
-    alpha: 0.35
-    threshold: 0.52
+    alpha: 0.8
+    threshold: 0.25
     min_frames: 6
   majority:
     window_size: 5
@@ -37,8 +37,8 @@ smoothers:
     sequence_len: 16
 
 fusion:
-  cnn_weight: 0.2
-  yolo_weight: 0.8
+  cnn_weight: 0.1
+  yolo_weight: 0.9
   agreement_threshold: 0.75
 
 # ── Rolling ON/OFF Rate Gate ───────────────────────────────────────────────
