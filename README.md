@@ -47,9 +47,9 @@ Real-time in-vehicle driver monitoring running entirely on a **Raspberry Pi 4 CP
 | Member | Role |
 |---|---|
 | **Berbaoui Ashref** | Face mesh, EAR/MAR/PERCLOS, Gaze, Integration |
-| **Hamza** | CNN-GRU deep fatigue model |
-| **Imen** | Seatbelt detection, Smoking detection |
-| **Yacine** | Phone detection |
+| **Khentache Hamza** | CNN-GRU deep fatigue model |
+| **Benelhadj Djelloul Imen** | Seatbelt detection, Smoking detection |
+| **Gasmi Yacine** | Phone detection |
 
 ---
 
