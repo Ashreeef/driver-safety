@@ -342,10 +342,22 @@ def main():
     print("Press 'q' to quit  |  'r' to reset gaze calibration."
           + ("  |  SPACE to pause" if is_video_file else ""))
 
+    _fps_t0      = time.time()
+    _fps_count   = 0
+    _fps_display = 0.0
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
+
+        # ── FPS counter ───────────────────────────────────────────────────────
+        _fps_count += 1
+        _fps_elapsed = time.time() - _fps_t0
+        if _fps_elapsed >= 1.0:
+            _fps_display = _fps_count / _fps_elapsed
+            _fps_count   = 0
+            _fps_t0      = time.time()
 
         # ── Core modules (synchronous, main thread) ───────────────────────────
         result = face_mesh.process_frame(frame)
@@ -379,7 +391,9 @@ def main():
                         2 if bold else 1, cv2.LINE_AA)
             y += step
 
+        fps_color = (80, 220, 80) if _fps_display >= 15 else (0, 80, 255)
         put("DRIVER MONITOR", color=(100, 200, 255), bold=True)
+        put(f"FPS  {_fps_display:.1f}", color=fps_color)
         put("-" * 16, color=(70, 70, 70))
 
         if result['valid']:
