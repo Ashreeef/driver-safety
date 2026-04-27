@@ -39,8 +39,8 @@ class BaseSeatbeltPipeline:
         rg = config.get('rate_gate', {})
         self.rate_gate_enabled  = bool(rg.get('enabled',       False))
         self.rate_window_size   = int(rg.get('window_size',    30))
-        self.rate_on_threshold  = float(rg.get('on_threshold',  0.60))
-        self.rate_off_threshold = float(rg.get('off_threshold', 0.60))
+        self.rate_on_threshold  = float(rg.get('on_threshold',  0.80))
+        self.rate_off_threshold = float(rg.get('off_threshold', 0.90))
         self._rate_history: deque = deque(maxlen=self.rate_window_size)
 
     def apply_rate_gate(self, label: str,
@@ -368,6 +368,7 @@ class Pipeline2(BaseSeatbeltPipeline):
         pose_path = (model_paths or {}).get('mediapipe', {}).get('pose_landmarker')
         self.roi_extractor = ROIExtractor(
             method='mediapipe', model_path=pose_path, config=roi_cfg)
+        self.roi_padding   = float(roi_cfg.get('padding', 0.2))
         self.yolo          = YOLO(yolo_path)
         self.classifier    = SeatbeltClassifier(
             classifier_path, device=device, config=clf_cfg)
@@ -387,7 +388,8 @@ class Pipeline2(BaseSeatbeltPipeline):
         H, W = frame.shape[:2]
 
         # Stage 1: ROI
-        roi, bbox, kps = self.roi_extractor.extract(frame)
+        roi, bbox, kps = self.roi_extractor.extract(
+            frame, padding=self.roi_padding)
         if roi is None:
             roi, bbox, kps = frame.copy(), (0, 0, W, H), []
 
