@@ -1,7 +1,7 @@
 mediapipe:
-  face_landmarker: "models/mediapipe/face_landmarker.task"
-  hand_landmarker: "models/mediapipe/hand_landmarker.task"
-  pose_landmarker: "models/mediapipe/pose_landmarker_lite.task"
+  face_landmarker: "weights/mediapipe/face_landmarker.task"
+  hand_landmarker: "weights/mediapipe/hand_landmarker.task"
+  pose_landmarker: "weights/mediapipe/pose_landmarker_lite.task"
 
 seatbelt:
   # Pipeline 1 — YOLOv5s ROI extractor + CNN patch classifier

@@ -50,7 +50,7 @@ fusion:
 #
 # Set enabled: false to disable (pipelines fall through to smoother output).
 rate_gate:
-  enabled:       false
+  enabled:       False
   window_size:   30      # number of recent frames tracked
   on_threshold:  0.80    # 60 % of window must be ON  to fire
   off_threshold: 0.90    # 60 % of window must be OFF to fire

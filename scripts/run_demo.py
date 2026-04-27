@@ -71,15 +71,19 @@ class ComplianceWorker:
             self._thread.join(timeout=2)
 
     def _run(self):
+        last_frame_id = None   # track which frame was last processed
         while self._running:
             with self._lock:
-                frame   = self._frame
-                face_lm = self._face_lm
+                frame     = self._frame
+                face_lm   = self._face_lm
+                frame_id  = id(frame) if frame is not None else None
 
-            if frame is None:
+            if frame is None or frame_id == last_frame_id:
+                # No new frame yet — yield CPU rather than spin
                 time.sleep(0.005)
                 continue
 
+            last_frame_id = frame_id
             update = {}
 
             if self._sb is not None:
@@ -141,19 +145,41 @@ def _try_load_compliance(args, paths, thresholds):
         ptype = str(args.seatbelt_pipeline)
         sb_yolo = sb_yolo1 if ptype == '1' else sb_yolo2
 
-        if not os.path.exists(sb_yolo) or not os.path.exists(sb_clf):
+        try:
+            with open('configs/seatbelt.yaml') as _f:
+                sb_cfg = yaml.safe_load(_f)
+        except Exception as exc:
+            sb_cfg = {}
+            print(f"[run_demo] Could not load seatbelt.yaml: {exc}")
+
+        # Determine which classifier Pipeline 1 will actually use
+        p1_clf_type = sb_cfg.get('pipelines', {}).get('pipeline1', {}).get(
+            'classifier_type', 'cnn')
+
+        # For Pipeline 1 with yolo classifier, only the ROI yolo is required.
+        # For cnn mode (or Pipeline 2), the CNN weights must also exist.
+        needs_clf = (ptype != '1') or (p1_clf_type == 'cnn')
+
+        missing_yolo = not os.path.exists(sb_yolo)
+        missing_clf  = needs_clf and not os.path.exists(sb_clf)
+
+        if missing_yolo or missing_clf:
             print(f"[run_demo] Seatbelt weights not found — seatbelt disabled.")
-            print(f"  yolo:       {sb_yolo}")
-            print(f"  classifier: {sb_clf}")
+            print(f"  yolo:       {sb_yolo}  (found={not missing_yolo})")
+            if needs_clf:
+                print(f"  classifier: {sb_clf}  (found={not missing_clf})")
         else:
             try:
-                with open('configs/seatbelt.yaml') as _f:
-                    sb_cfg = yaml.safe_load(_f)
-
                 if ptype == '1':
                     from src.compliance.seatbelt.pipelines import Pipeline1
-                    pipeline = Pipeline1(sb_yolo, sb_clf, config=sb_cfg)
-                    print("[run_demo] Seatbelt Pipeline 1 loaded (YOLOv5s ROI + CNN).")
+                    # Pass yolo_p2 (YOLOv8n) as the classifier path so that
+                    # when classifier_type=="yolo" Pipeline1 loads it directly;
+                    # when classifier_type=="cnn"  Pipeline1 loads sb_clf instead.
+                    clf_path = sb_yolo2 if p1_clf_type == 'yolo' else sb_clf
+                    pipeline = Pipeline1(sb_yolo, clf_path, config=sb_cfg)
+                    clf_label = "YOLOv8n detector" if p1_clf_type == 'yolo' else "MobileNetV3 CNN"
+                    print(f"[run_demo] Seatbelt Pipeline 1 loaded "
+                          f"(YOLOv5s ROI + {clf_label}).")
                 elif ptype == '3':
                     from src.compliance.seatbelt.pipelines import Pipeline3
                     pipeline = Pipeline3(sb_yolo, config=sb_cfg)
@@ -162,7 +188,8 @@ def _try_load_compliance(args, paths, thresholds):
                     from src.compliance.seatbelt.pipelines import Pipeline2
                     pipeline = Pipeline2(sb_yolo, sb_clf, config=sb_cfg,
                                         model_paths=paths)
-                    print("[run_demo] Seatbelt Pipeline 2 loaded (Pose+YOLOv8n+CNN, default).")
+                    print("[run_demo] Seatbelt Pipeline 2 loaded "
+                          "(Pose+YOLOv8n+CNN, default).")
             except Exception as exc:
                 print(f"[run_demo] Seatbelt load failed: {exc}")
 
@@ -268,10 +295,38 @@ def main():
     else:
         source = thresholds.get('camera_source', 0)
 
+    is_video_file = isinstance(source, str)   # True for file paths, False for camera index
+
     cap = cv2.VideoCapture(source)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
-    cap.set(cv2.CAP_PROP_FPS, fps)
+
+    if is_video_file:
+        # Read actual video properties — cap.set() has no effect on files.
+        video_fps = cap.get(cv2.CAP_PROP_FPS)
+        if video_fps <= 0:
+            video_fps = fps  # fallback to config value
+        video_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        video_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration_s   = total_frames / video_fps if video_fps > 0 else 0
+        print(f"[run_demo] Video file: {source}")
+        print(f"  resolution : {video_w}x{video_h}")
+        print(f"  fps        : {video_fps:.1f}")
+        print(f"  frames     : {total_frames}  ({duration_s:.1f}s)")
+        # Re-initialise FPS-sensitive trackers with the video's actual rate
+        if abs(video_fps - fps) > 1.0:
+            print(f"[run_demo] Re-initialising trackers for {video_fps:.1f} fps "
+                  f"(config was {fps} fps)")
+            calibrator  = EARCalibrator(thresholds, fps=video_fps)
+            ear_tracker = EARTracker(thresholds, calibrator)
+            perclos     = PERCLOSTracker(thresholds, calibrator, fps=video_fps)
+        # Pace display so each frame is visible and the compliance worker can keep up.
+        # Target real-time playback; clamp to at least 1 ms.
+        frame_delay_ms = max(1, int(1000 / video_fps))
+    else:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  thresholds.get('camera_width',  640))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, thresholds.get('camera_height', 480))
+        cap.set(cv2.CAP_PROP_FPS, fps)
+        frame_delay_ms = 1   # camera already paces itself via hardware
 
     writer = None
     if args.output:
@@ -284,7 +339,8 @@ def main():
 
     alert_engine = AlertEngine()
 
-    print("Press 'q' to quit  |  'r' to reset gaze calibration.")
+    print("Press 'q' to quit  |  'r' to reset gaze calibration."
+          + ("  |  SPACE to pause" if is_video_file else ""))
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -395,41 +451,64 @@ def main():
                 f"[{result['head_pose_method'][:3]}]",
                 color=(160, 160, 160))
 
-            # Compliance status
-            if compliance_worker is not None:
-                put("-" * 16, color=(70, 70, 70))
-                sb_ok = result.get('seatbelt_detected', False)
-                sm_on = result.get('smoking_detected', False)
-                ph_on = result.get('phone_detected', False)
-                put(f"Seatbelt  {'ON' if sb_ok else 'OFF'}",
-                    color=(100, 220, 100) if sb_ok else (0, 80, 255))
-                put(f"Smoking   {'YES' if sm_on else 'clear'}",
-                    color=(0, 0, 255) if sm_on else (100, 220, 100))
-                if ph_detector is not None:
-                    put(f"Phone     {'YES' if ph_on else 'clear'}",
-                        color=(0, 0, 255) if ph_on else (100, 220, 100))
-
-            alerts = result.get('alerts', [])
-            if alerts:
-                put("-" * 16, color=(70, 70, 70))
-                put("ALERTS", color=(0, 120, 255), bold=True)
-                for alert in alerts[:3]:
-                    put(f"! {alert}", color=(0, 0, 255))
         else:
             put("NO FACE / ANGLE EXCEEDED", color=(0, 0, 255), bold=True)
             put(f"Pitch:{result['pitch']:.0f}  Yaw:{result['yaw']:.0f}",
                 color=(0, 140, 255))
 
+        # ── Compliance status — always shown regardless of face detection ──────────────
+        if compliance_worker is not None:
+            put("-" * 16, color=(70, 70, 70))
+            sb_ok   = result.get('seatbelt_detected', False)
+            sb_conf = result.get('seatbelt_confidence')
+            sm_on   = result.get('smoking_detected', False)
+            ph_on   = result.get('phone_detected', False)
+
+            # Seatbelt — show label + confidence when available
+            if sb_conf is not None:
+                sb_conf_pct = f"{sb_conf:.0%}"
+                put(f"Seatbelt  {'ON' if sb_ok else 'OFF'}  {sb_conf_pct}",
+                    color=(100, 220, 100) if sb_ok else (0, 80, 255))
+            else:
+                put(f"Seatbelt  {'ON' if sb_ok else 'OFF'}",
+                    color=(100, 220, 100) if sb_ok else (0, 80, 255))
+
+            put(f"Smoking   {'YES' if sm_on else 'clear'}",
+                color=(0, 0, 255) if sm_on else (100, 220, 100))
+            if ph_detector is not None:
+                put(f"Phone     {'YES' if ph_on else 'clear'}",
+                    color=(0, 0, 255) if ph_on else (100, 220, 100))
+
+            # Pipeline tag (bottom-right of left panel)
+            if sb_pipeline is not None:
+                p_label = f"P{args.seatbelt_pipeline}"
+                cv2.putText(frame,
+                            f"SB:{p_label}",
+                            (panel_w - 48, h - 6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38,
+                            (110, 110, 110), 1, cv2.LINE_AA)
+
+        alerts = result.get('alerts', [])
+        if alerts:
+            put("-" * 16, color=(70, 70, 70))
+            put("ALERTS", color=(0, 120, 255), bold=True)
+            for alert in alerts[:3]:
+                put(f"! {alert}", color=(0, 0, 255))
+
         if writer is not None:
             writer.write(frame)
 
         cv2.imshow('Fatigue Detection', frame)
-        key = cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(frame_delay_ms) & 0xFF
         if key == ord('q'):
             break
         elif key == ord('r'):
             gaze.reset_calibration()
             print("[run_demo] Gaze calibration reset.")
+        elif key == ord(' ') and is_video_file:
+            # Pause on SPACE when playing a video file
+            print("[run_demo] Paused — press any key to resume.")
+            cv2.waitKey(0)
 
     cap.release()
     if writer is not None:
