@@ -20,8 +20,13 @@ def seatbelt_to_result(scene_dict: dict, result_dict: dict) -> dict:
     All three pipelines share the 'label' key ('ON' / 'OFF' / 'WARMING').
     'WARMING' is treated as not-yet-detected (False) until the smoother
     has enough frames to make a stable prediction.
+
+    Also writes:
+      seatbelt_confidence  – scene-level confidence float (0–1) or None
     """
-    result_dict['seatbelt_detected'] = (scene_dict.get('label') == 'ON')
+    label = scene_dict.get('label')
+    result_dict['seatbelt_detected']   = (label == 'ON')
+    result_dict['seatbelt_confidence'] = scene_dict.get('confidence')
     return result_dict
 
 

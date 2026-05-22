@@ -39,24 +39,34 @@ class BaseSeatbeltPipeline:
         rg = config.get('rate_gate', {})
         self.rate_gate_enabled  = bool(rg.get('enabled',       False))
         self.rate_window_size   = int(rg.get('window_size',    30))
-        self.rate_on_threshold  = float(rg.get('on_threshold',  0.60))
-        self.rate_off_threshold = float(rg.get('off_threshold', 0.60))
+        self.rate_on_threshold  = float(rg.get('on_threshold',  0.80))
+        self.rate_off_threshold = float(rg.get('off_threshold', 0.90))
         self._rate_history: deque = deque(maxlen=self.rate_window_size)
 
     def apply_rate_gate(self, label: str,
-                        confidence: float) -> Tuple[str, float, Dict]:
+                        confidence: float) -> Tuple[str, float, Optional[Dict]]:
         """
-        Record the current frame label and apply the rate gate.
+        Apply the sliding-window ON/OFF rate gate — **only when enabled**.
 
-        Rules (only active when ``rate_gate.enabled = true``):
+        When ``rate_gate.enabled = false`` (the default) this method is a
+        pure pass-through: the label and confidence are returned unchanged,
+        no history is accumulated, and ``rate_info`` is ``None`` so the HUD
+        panel is suppressed entirely.
+
+        When ``rate_gate.enabled = true``:
           • on_rate  ≥ on_threshold  → force label = ON
           • off_rate ≥ off_threshold → force label = OFF
-          • Otherwise                → pass the smoother output unchanged
+          • Otherwise                → smoother output passes through unchanged
 
         Returns
         -------
         (final_label, final_confidence, rate_info)
+            rate_info is None when the gate is disabled.
         """
+        if not self.rate_gate_enabled:
+            # Gate disabled — zero side-effects, no history, no HUD.
+            return label, confidence, None
+
         is_on = 1 if label == 'ON' else 0
         self._rate_history.append(is_on)
 
@@ -68,15 +78,14 @@ class BaseSeatbeltPipeline:
         final_conf  = confidence
         gate_fired  = False
 
-        if self.rate_gate_enabled:
-            if on_rate >= self.rate_on_threshold:
-                final_label = 'ON'
-                final_conf  = max(confidence, on_rate)
-                gate_fired  = True
-            elif off_rate >= self.rate_off_threshold:
-                final_label = 'OFF'
-                final_conf  = max(confidence, off_rate)
-                gate_fired  = True
+        if on_rate >= self.rate_on_threshold:
+            final_label = 'ON'
+            final_conf  = max(confidence, on_rate)
+            gate_fired  = True
+        elif off_rate >= self.rate_off_threshold:
+            final_label = 'OFF'
+            final_conf  = max(confidence, off_rate)
+            gate_fired  = True
 
         return final_label, final_conf, {
             'on_rate':  on_rate,
@@ -84,7 +93,7 @@ class BaseSeatbeltPipeline:
             'n':        n,
             'window':   self.rate_window_size,
             'fired':    gate_fired,
-            'enabled':  self.rate_gate_enabled,
+            'enabled':  True,
         }
 
     def _draw_rate_info(self, frame: np.ndarray,
@@ -241,6 +250,8 @@ class Pipeline1(BaseSeatbeltPipeline):
                             if c > patch_conf:
                                 patch_conf = c
                                 patch_cls  = int(b.cls[0].item())
+                # class 0 = OFF, class 1 = ON (standard seatbelt YOLO convention)
+                # If no boxes detected treat as OFF with low confidence
             else:
                 patch_cls, patch_conf = self.classifier.predict(roi)
                 if patch_cls == 1 and patch_conf < self.patch_conf_thresh:
@@ -248,11 +259,12 @@ class Pipeline1(BaseSeatbeltPipeline):
 
             sm_cls, sm_conf = self.smoother.update(patch_cls, patch_conf)
             raw_results.append({
-                'bbox':      (x1, y1, x2, y2),
-                'yolo_conf': yolo_conf,
-                'class_idx': sm_cls,
-                'confidence': sm_conf,
-                'label':     'ON' if sm_cls == 1 else 'OFF',
+                'bbox':        (x1, y1, x2, y2),
+                'yolo_conf':   yolo_conf,
+                'class_idx':   sm_cls,
+                'confidence':  sm_conf,
+                'label':       'ON' if sm_cls == 1 else 'OFF',
+                'clf_type':    self.classifier_type,
             })
 
         # ── Scene label (any box ON → scene ON) ───────────────────────────
@@ -323,7 +335,8 @@ class Pipeline1(BaseSeatbeltPipeline):
                             (x1 + 5, y2 + 18),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1)
 
-        cv2.putText(out, "Pipeline 1: YOLOv5 ROI + CNN",
+        clf_desc = "YOLOv8n" if self.classifier_type == 'yolo' else "CNN"
+        cv2.putText(out, f"Pipeline 1: YOLOv5 ROI + {clf_desc}",
                     (8, H - 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
         self._draw_rate_info(out, rate_info)
@@ -355,6 +368,7 @@ class Pipeline2(BaseSeatbeltPipeline):
         pose_path = (model_paths or {}).get('mediapipe', {}).get('pose_landmarker')
         self.roi_extractor = ROIExtractor(
             method='mediapipe', model_path=pose_path, config=roi_cfg)
+        self.roi_padding   = float(roi_cfg.get('padding', 0.2))
         self.yolo          = YOLO(yolo_path)
         self.classifier    = SeatbeltClassifier(
             classifier_path, device=device, config=clf_cfg)
@@ -374,7 +388,8 @@ class Pipeline2(BaseSeatbeltPipeline):
         H, W = frame.shape[:2]
 
         # Stage 1: ROI
-        roi, bbox, kps = self.roi_extractor.extract(frame)
+        roi, bbox, kps = self.roi_extractor.extract(
+            frame, padding=self.roi_padding)
         if roi is None:
             roi, bbox, kps = frame.copy(), (0, 0, W, H), []
 

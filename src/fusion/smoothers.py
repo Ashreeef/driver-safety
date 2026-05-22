@@ -11,8 +11,8 @@ class EMASmoother:
     """
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
-        self.alpha = self.config.get('alpha', 0.35)
-        self.threshold = self.config.get('threshold', 0.52)
+        self.alpha = self.config.get('alpha', 0.8)
+        self.threshold = self.config.get('threshold', 0.25)
         self.min_frames = self.config.get('min_frames', 6)
         self.ema = 0.5
         self.n = 0
