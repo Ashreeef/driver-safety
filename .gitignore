@@ -3,11 +3,10 @@ data/
 
 # Model weights
 models/
-*.pt
+test_input/
 *.pth
 *.tflite
 *.task
-*.onnx
 *.pb
 
 # Python

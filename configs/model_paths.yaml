@@ -1,2 +1,22 @@
 mediapipe:
-  face_landmarker: "models/mediapipe/face_landmarker.task"
+  face_landmarker: "weights/mediapipe/face_landmarker.task"
+  hand_landmarker: "weights/mediapipe/hand_landmarker.task"
+  pose_landmarker: "weights/mediapipe/pose_landmarker_lite.task"
+
+seatbelt:
+  # Pipeline 1 — YOLOv5s ROI extractor + CNN patch classifier
+  yolo_p1:    "weights/v1/seatbelt_yolov5s_roi.pt"
+  # Pipeline 2 — YOLOv8n on torso ROI + CNN patch classifier
+  yolo_p2:    "weights/v1/seatbelt_yolov8n.pt"
+  # Shared CNN patch classifier (MobileNetV3-Small, 2-class)
+  classifier: "weights/v1/seatbelt_mobilenetv3.pt"
+  # BiLSTM temporal smoother (not wired yet)
+  bilstm:     "weights/v1/seatbelt_bilstm.pt"
+
+smoking:
+  # YOLOv8 ONNX cigarette/smoking detector (class 0: 'Smooking')
+  yolo: "weights/v1/smoking_yolov8.onnx"
+
+phone:
+  # YOLOv8 phone detector weights
+  yolo: "weights/v1/yolov8n_phone.pt"

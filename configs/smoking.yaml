@@ -1,0 +1,47 @@
+# Smoking Detection Configuration File
+
+detection:
+  # YOLO smoking detector settings (weights/v1/best.onnx — YOLOv8 ONNX)
+  conf_thresh: 0.45
+  iou_thresh: 0.45
+  classes:
+    0: "smoking"    # model outputs 'Smooking' but we normalise the label here
+
+landmarks:
+  # MediaPipe HandLandmarker Settings
+  min_hand_detection_confidence: 0.5
+  min_hand_tracking_confidence: 0.5
+
+  # MediaPipe PoseLandmarker Settings (for elbow-angle bonus)
+  min_pose_detection_confidence: 0.5
+  min_pose_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+  # Thresholds for behavioral inference
+  hand_mouth_dist_thresh: 0.15   # Normalised distance [0, 1]
+  elbow_angle_min: 30.0          # Degrees
+  elbow_angle_max: 150.0
+  wrist_velocity_thresh: 0.25    # Threshold for penalty
+
+fusion:
+  # hybrid fusion s = alpha*s_L + (1-alpha)*s_D
+  alpha: 0.10
+
+temporal_buffer:
+  # Sliding window majority vote
+  window_size: 8
+  confirm_threshold: 5
+  hysteresis_low: 0.30
+
+visualization:
+  colors:
+    alert: [0, 0, 220]      # Red (BGR)
+    normal: [0, 200, 60]    # Green (BGR)
+    landmark: [0, 255, 130] # Cyan (BGR)
+    det_box: [0, 200, 255]  # Yellow-ish (BGR)
+  
+  hud:
+    panel_height: 90
+    font_scale: 0.75
+    font_thickness: 2
+    overlay_alpha: 0.65

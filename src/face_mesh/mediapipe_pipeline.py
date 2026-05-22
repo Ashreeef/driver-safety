@@ -47,7 +47,7 @@ class FaceMeshDetector:
         model_path = (model_paths_dict
                       .get('mediapipe', {})
                       .get('face_landmarker',
-                           'models/mediapipe/face_landmarker.task'))
+                           'weights/mediapipe/face_landmarker.task'))
 
         base_options = python.BaseOptions(model_asset_path=model_path)
         options = vision.FaceLandmarkerOptions(
